@@ -47,8 +47,11 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [~] Investigasi per-app capture: process tap berhasil dibuat dan membaca audio dari `say` (RMS -15,6 dBFS). Belum diintegrasikan ke aplikasi.
 - [x] Send per koneksi, tautan stereo, peak hold, clip, preset, template, sambung ulang otomatis (belum diuji langsung), dan ekspor diagnostik. Verifikasi: 17 cek harness pada perangkat.
 - [ ] Ramp gain per sampel (sekarang per blok).
-- [ ] Ring buffer driver dengan lock atau SPSC yang diuji penuh (saat ini fence memori).
-- [ ] Penyebab buffer 192 di HAL.
+- [x] Jalur clock driver tanpa lock; ring disentuh dan dikunci saat driver dimuat (`a86af75`, `d032b9b`). Diuji offline.
+- [x] Ukuran buffer driver mengikuti HAL (16-1024), timeline sejalan dengan blok IO (`a86af75`). Tes ring 192 dan 512 lulus offline.
+- [ ] Pasang ulang driver dari DMG terbaru (driver lama di sistem belum memuat perbaikan ini), lalu cek ukuran buffer yang dilaporkan.
+- [ ] Uji audio langsung: kresek tidak terdengar selama sesi live, dan dashboard dropout tetap nol.
+- [ ] Pembacaan input yang terlambat masih diisi nol. Ukur seberapa sering terjadi saat uji live.
 - [ ] Graph view dan editor bus di aplikasi (sekarang hanya matriks langsung).
 - [ ] Diagnostik dan ekspor laporan.
 - [ ] Tahap 7: multi-device luas, DSP, plugin.
