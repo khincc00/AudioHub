@@ -8,8 +8,8 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [x] Backend CoreAudio (`backends/coreaudio/io`) dibangun dan lulus smoke test.
 - [x] Aplikasi SwiftUI (`apps/macos/AudioHub`) dibangun menjadi bundel `.app` dengan izin mikrofon di `Info.plist`.
 - [x] Driver virtual (`virtual-device/AudioHubDriver`) dibangun dan dipasang di mesin uji.
-- [x] Paket instalasi driver (`AudioHub-Virtual-0.1.pkg`) dibangun, tanpa tanda tangan.
-- [ ] Tanda tangan developer ID untuk aplikasi dan paket. Butuh akun developer Anda.
+- [x] Paket instalasi driver (`AudioHub-Virtual-0.1.pkg`) dibangun dan ditandatangani Developer ID Installer (`pkg/build_pkg.sh`).
+- [x] Tanda tangan developer ID untuk aplikasi dan driver (build Release dari `AudioHub.xcodeproj`, Hardened Runtime, timestamp).
 - [ ] Notarisasi Apple. Butuh akun developer Anda.
 - [ ] Uji instalasi paket di mesin bersih, termasuk uninstall.
 - [ ] Pemasangan ulang driver dengan dua perangkat (AudioHub Virtual dan AudioHub Virtual 2) di mesin uji. Uji offline sudah lulus.
