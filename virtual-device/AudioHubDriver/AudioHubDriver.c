@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #define kAH_SampleRate 48000.0
 #define kAH_Channels 2
@@ -37,7 +38,8 @@ static pthread_mutex_t gClockMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // State per perangkat
 static _Atomic int gIORunning[kAH_NumDevices];
-static UInt64 gAnchorHostTime[kAH_NumDevices];
+// Dibaca di jalur clock tanpa lock (GetZeroTimeStamp), ditulis saat IO dimulai.
+static _Atomic UInt64 gAnchorHostTime[kAH_NumDevices];
 static float gRing[kAH_NumDevices][kAH_RingFrames * kAH_Channels];
 // Penanda tulis per perangkat: sampel di bawah nilai ini sudah ditulis oleh output.
 // Pembaca memakai nol untuk posisi yang belum ditulis, bukan data lama dari putaran sebelumnya.
@@ -126,6 +128,12 @@ static OSStatus Initialize(AudioServerPlugInDriverRef driver, AudioServerPlugInH
     mach_timebase_info(&tb);
     Float64 hostTicksPerSecond = 1e9 * (Float64)tb.denom / (Float64)tb.numer;
     gHostTicksPerPeriod = hostTicksPerSecond * kAH_BufferFrames / kAH_SampleRate;
+    // Sentuh dan kunci memori ring di muka. Akses pertama ke halaman yang belum siap bisa memicu
+    // page fault di thread IO. Jika mlock gagal, driver tetap berjalan.
+    for (int d = 0; d < kAH_NumDevices; d++) {
+        memset(gRing[d], 0, sizeof gRing[d]);
+        (void)mlock(gRing[d], sizeof gRing[d]);
+    }
     return kAudioHardwareNoError;
 }
 
@@ -325,11 +333,13 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d, AudioObjectID dev, UInt32 
     (void)d; (void)clientID;
     int i = devOf(dev);
     if (i < 0 || partOf(dev) != 0) return kAudioHardwareBadObjectError;
+    // Mutex hanya untuk start/stop (bukan jalur clock). Reset ring dilakukan sebelum penanda tulis
+    // dan anchor diterbitkan, supaya thread IO tidak membaca data lama.
     pthread_mutex_lock(&gClockMutex);
     if (atomic_load(&gIORunning[i]) == 0) {
-        gAnchorHostTime[i] = mach_absolute_time();
         memset(gRing[i], 0, sizeof gRing[i]);
         atomic_store_explicit(&gWriteEnd[i], 0, memory_order_release);
+        atomic_store_explicit(&gAnchorHostTime[i], mach_absolute_time(), memory_order_release);
     }
     atomic_fetch_add(&gIORunning[i], 1);
     pthread_mutex_unlock(&gClockMutex);
@@ -344,18 +354,19 @@ static OSStatus StopIO(AudioServerPlugInDriverRef d, AudioObjectID dev, UInt32 c
     return kAudioHardwareNoError;
 }
 
-// Timestamp nol berdasarkan periode buffer tetap dari waktu mulai, per perangkat
+// Timestamp nol berdasarkan periode buffer tetap dari waktu mulai, per perangkat.
+// Dipanggil dari thread timing HAL: tanpa lock, hanya operasi atomik.
 static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d, AudioObjectID dev, UInt32 clientID, Float64* outSampleTime, UInt64* outHostTime, UInt64* outSeed) {
     (void)d; (void)clientID;
     int i = devOf(dev);
     if (i < 0) return kAudioHardwareBadObjectError;
-    pthread_mutex_lock(&gClockMutex);
+    UInt64 anchor = atomic_load_explicit(&gAnchorHostTime[i], memory_order_acquire);
     UInt64 now = mach_absolute_time();
-    UInt64 periods = (UInt64)((Float64)(now - gAnchorHostTime[i]) / gHostTicksPerPeriod);
+    UInt64 elapsed = now > anchor ? now - anchor : 0;
+    UInt64 periods = (UInt64)((Float64)elapsed / gHostTicksPerPeriod);
     *outSampleTime = (Float64)(periods * kAH_BufferFrames);
-    *outHostTime = gAnchorHostTime[i] + (UInt64)((Float64)periods * gHostTicksPerPeriod);
+    *outHostTime = anchor + (UInt64)((Float64)periods * gHostTicksPerPeriod);
     *outSeed = 1;
-    pthread_mutex_unlock(&gClockMutex);
     return kAudioHardwareNoError;
 }
 
