@@ -273,6 +273,9 @@ final class EngineController: ObservableObject {
     private var io: OpaquePointer?
     private var timer: Timer?
     private var reconnectTimer: Timer?
+    // Pembacaan "tidak hidup" berturut-turut. Satu kegagalan sesaat dari HAL tidak menghentikan IO.
+    private var aliveMisses = 0
+    private let aliveMissLimit = 5   // 5 × 0,1 detik = sekitar 0,5 detik
 
     init() {
         // Engine tetap berjalan saat jendela ditutup. Hanya dihentikan saat aplikasi keluar.
@@ -417,6 +420,7 @@ final class EngineController: ObservableObject {
         if ah_io_start(h) == 0 {
             running = true
             status = "Berjalan"
+            aliveMisses = 0
             cancelReconnect()
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
         } else {
@@ -667,7 +671,14 @@ final class EngineController: ObservableObject {
     private func tick() {
         guard let h = io else { return }
         // Kebijakan: perangkat hilang → berhenti. Auto sambung ulang hanya jika pengguna mengaktifkannya.
+        // Pengecekan harus gagal beberapa kali berturut-turut; kegagalan sesaat dicatat lalu diabaikan.
         if ah_io_is_alive(h) == 0 {
+            aliveMisses += 1
+            if aliveMisses < aliveMissLimit {
+                NSLog("AudioHub: IsAlive gagal sesaat (%d/%d), IO tetap berjalan", aliveMisses, aliveMissLimit)
+                return
+            }
+            aliveMisses = 0
             haltIO()
             refreshDevices()
             if autoReconnect {
@@ -677,6 +688,7 @@ final class EngineController: ObservableObject {
             }
             return
         }
+        aliveMisses = 0
         var inP = [Float](repeating: 0, count: 8)
         var outP = [Float](repeating: 0, count: 8)
         ah_io_peaks(h, &inP, &outP)
