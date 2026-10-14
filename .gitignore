@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Hasil build (dibuat ulang dari sumber)
+build/
+DerivedData/
+*.dSYM/
+
+# Status Xcode pribadi per pengguna
+xcuserdata/
+*.xcuserstate

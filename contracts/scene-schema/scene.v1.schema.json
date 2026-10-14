@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://audiohub.local/contracts/scene.v1.schema.json",
+  "title": "AudioHub Scene v1",
+  "description": "Format preset/scene AudioHub. Input dan output dirujuk lewat id (in:N, out:N). Peran perangkat dicatat di bindings.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "deviceName", "bindings", "inputs", "outputs", "routes"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "deviceName": { "type": "string" },
+    "useVirtual": { "type": "boolean" },
+    "useVirtual2": { "type": "boolean" },
+    "bindings": {
+      "type": "array",
+      "description": "Peran logis dan perangkat yang dipakai. Perangkat yang hilang ditandai di aplikasi, tidak diganti otomatis.",
+      "items": {
+        "type": "object",
+        "required": ["role", "kind", "deviceUID", "deviceName", "channel"],
+        "additionalProperties": false,
+        "properties": {
+          "role": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["physical", "virtual"] },
+          "deviceUID": { "type": "string" },
+          "deviceName": { "type": "string" },
+          "channel": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "gainDb", "mute", "fx"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^in:[0-9]+$" },
+          "gainDb": { "type": "number", "minimum": -60, "maximum": 12 },
+          "mute": { "type": "boolean" },
+          "fx": {
+            "type": "object",
+            "required": ["name", "colorIndex", "gate", "eq", "comp", "delay", "insert"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "maxLength": 40 },
+              "colorIndex": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "gate": { "$ref": "#/$defs/gate" },
+              "eq": { "$ref": "#/$defs/eq" },
+              "comp": { "$ref": "#/$defs/comp" },
+              "delay": {
+                "type": "object",
+                "required": ["enabled", "delayMs"],
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "delayMs": { "type": "number", "minimum": 0, "maximum": 1000 }
+                }
+              },
+              "insert": { "type": "string", "description": "Nama effect Audio Unit; kosong = tanpa plugin" }
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "gainDb", "mute", "limiter"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^out:[0-9]+$" },
+          "name": { "type": "string", "maxLength": 40 },
+          "gainDb": { "type": "number", "minimum": -60, "maximum": 12 },
+          "mute": { "type": "boolean" },
+          "limiter": {
+            "type": "object",
+            "required": ["enabled", "ceilingDb", "releaseMs"],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "ceilingDb": { "type": "number", "minimum": -12, "maximum": 0 },
+              "releaseMs": { "type": "number", "minimum": 1, "maximum": 1000 }
+            }
+          }
+        }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "description": "Koneksi input ke output. Route virtual ke virtual tidak diizinkan.",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "sendDb", "enabled"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string", "pattern": "^in:[0-9]+$" },
+          "to": { "type": "string", "pattern": "^out:[0-9]+$" },
+          "sendDb": { "type": "number", "minimum": -60, "maximum": 0 },
+          "enabled": { "type": "boolean" }
+        }
+      }
+    },
+    "linkedPairs": { "type": "array", "items": { "type": "boolean" } },
+    "buses": {
+      "type": "array",
+      "description": "Dicadangkan untuk bus (Voice, Desktop, Communication, Monitor, Stream, Record). Belum dipakai.",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "required": ["enabled", "thresholdDb", "attackMs", "releaseMs", "holdMs"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "thresholdDb": { "type": "number", "minimum": -80, "maximum": 0 },
+        "attackMs": { "type": "number", "minimum": 0 },
+        "releaseMs": { "type": "number", "minimum": 0 },
+        "holdMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "eq": {
+      "type": "object",
+      "required": ["enabled", "lowDb", "lowHz", "midDb", "midHz", "midQ", "highDb", "highHz"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "lowDb": { "type": "number", "minimum": -15, "maximum": 15 },
+        "lowHz": { "type": "number", "minimum": 20 },
+        "midDb": { "type": "number", "minimum": -15, "maximum": 15 },
+        "midHz": { "type": "number", "minimum": 20 },
+        "midQ": { "type": "number", "minimum": 0.1 },
+        "highDb": { "type": "number", "minimum": -15, "maximum": 15 },
+        "highHz": { "type": "number", "minimum": 20 }
+      }
+    },
+    "comp": {
+      "type": "object",
+      "required": ["enabled", "thresholdDb", "ratio", "attackMs", "releaseMs", "makeupDb", "kneeDb"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "thresholdDb": { "type": "number", "minimum": -60, "maximum": 0 },
+        "ratio": { "type": "number", "minimum": 1, "maximum": 20 },
+        "attackMs": { "type": "number", "minimum": 0 },
+        "releaseMs": { "type": "number", "minimum": 0 },
+        "makeupDb": { "type": "number", "minimum": 0, "maximum": 24 },
+        "kneeDb": { "type": "number", "minimum": 0, "maximum": 12 }
+      }
+    }
+  }
+}
