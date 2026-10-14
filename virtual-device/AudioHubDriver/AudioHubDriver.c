@@ -33,7 +33,12 @@ static const char* kAH_ModelUIDs[kAH_NumDevices] = {"com.audiohub.virtual.model"
 
 static AudioServerPlugInHostRef gHost = NULL;
 static UInt32 gRefCount = 1;
-static Float64 gHostTicksPerPeriod = 0;
+static Float64 gHostTicksPerSecond = 0;
+// Ukuran buffer per perangkat. HAL mengaturnya lewat SetPropertyData; default kAH_BufferFrames.
+// Periode waktu nol mengikuti nilai ini, supaya blok IO dan timeline selalu sama.
+static _Atomic UInt32 gBufferFrames[kAH_NumDevices];
+#define kAH_MinBufferFrames 16
+#define kAH_MaxBufferFrames 1024
 static pthread_mutex_t gClockMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // State per perangkat
@@ -127,7 +132,8 @@ static OSStatus Initialize(AudioServerPlugInDriverRef driver, AudioServerPlugInH
     mach_timebase_info_data_t tb;
     mach_timebase_info(&tb);
     Float64 hostTicksPerSecond = 1e9 * (Float64)tb.denom / (Float64)tb.numer;
-    gHostTicksPerPeriod = hostTicksPerSecond * kAH_BufferFrames / kAH_SampleRate;
+    gHostTicksPerSecond = hostTicksPerSecond;
+    for (int d = 0; d < kAH_NumDevices; d++) atomic_store(&gBufferFrames[d], kAH_BufferFrames);
     // Sentuh dan kunci memori ring di muka. Akses pertama ke halaman yang belum siap bisa memicu
     // page fault di thread IO. Jika mlock gagal, driver tetap berjalan.
     for (int d = 0; d < kAH_NumDevices; d++) {
@@ -241,10 +247,10 @@ static OSStatus getProperty(AudioObjectID obj, const AudioObjectPropertyAddress*
         case kAudioDevicePropertyAvailableNominalSampleRates: {
             AudioValueRange r = {kAH_SampleRate, kAH_SampleRate};
             SIZE_OR_COPY(&r, sizeof r); }
-        case kAudioDevicePropertyZeroTimeStampPeriod: { UInt32 v = kAH_BufferFrames; SIZE_OR_COPY(&v, sizeof v); }
-        case kAudioDevicePropertyBufferFrameSize: { UInt32 v = kAH_BufferFrames; SIZE_OR_COPY(&v, sizeof v); }
+        case kAudioDevicePropertyZeroTimeStampPeriod: { UInt32 v = atomic_load(&gBufferFrames[d]); SIZE_OR_COPY(&v, sizeof v); }
+        case kAudioDevicePropertyBufferFrameSize: { UInt32 v = atomic_load(&gBufferFrames[d]); SIZE_OR_COPY(&v, sizeof v); }
         case kAudioDevicePropertyBufferFrameSizeRange: {
-            AudioValueRange r = {kAH_BufferFrames, kAH_BufferFrames};
+            AudioValueRange r = {kAH_MinBufferFrames, kAH_MaxBufferFrames};
             SIZE_OR_COPY(&r, sizeof r); }
         case kAudioDevicePropertyPreferredChannelsForStereo: { UInt32 v[2] = {1, 2}; SIZE_OR_COPY(v, sizeof v); }
         case kAudioObjectPropertyControlList: { SIZE_OR_COPY(NULL, 0); }
@@ -307,8 +313,9 @@ static Boolean HasProperty(AudioServerPlugInDriverRef d, AudioObjectID obj, pid_
 }
 
 static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d, AudioObjectID obj, pid_t pid, const AudioObjectPropertyAddress* a, Boolean* outSettable) {
-    (void)d; (void)obj; (void)pid; (void)a;
-    *outSettable = false;   // tidak ada properti yang bisa diubah dari luar
+    (void)d; (void)pid;
+    // Hanya ukuran buffer perangkat yang bisa diatur HAL. Properti lain tetap tidak bisa diubah.
+    *outSettable = devOf(obj) >= 0 && partOf(obj) == 0 && a->mSelector == kAudioDevicePropertyBufferFrameSize;
     return kAudioHardwareNoError;
 }
 
@@ -323,8 +330,15 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef d, AudioObjectID obj,
 }
 
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d, AudioObjectID obj, pid_t pid, const AudioObjectPropertyAddress* a, UInt32 qualSize, const void* qual, UInt32 dataSize, const void* data) {
-    (void)d; (void)obj; (void)pid; (void)a; (void)qualSize; (void)qual; (void)dataSize; (void)data;
-    return kAudioHardwareUnknownPropertyError;
+    (void)d; (void)pid; (void)qualSize; (void)qual;
+    int i = devOf(obj);
+    if (i < 0 || partOf(obj) != 0 || a->mSelector != kAudioDevicePropertyBufferFrameSize)
+        return kAudioHardwareUnknownPropertyError;
+    if (!data || dataSize < sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
+    UInt32 frames = *(const UInt32*)data;
+    if (frames < kAH_MinBufferFrames || frames > kAH_MaxBufferFrames) return kAudioHardwareIllegalOperationError;
+    atomic_store_explicit(&gBufferFrames[i], frames, memory_order_release);
+    return kAudioHardwareNoError;
 }
 
 // ---- Clock dan IO ----
@@ -360,12 +374,14 @@ static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d, AudioObjectID dev
     (void)d; (void)clientID;
     int i = devOf(dev);
     if (i < 0) return kAudioHardwareBadObjectError;
+    UInt32 frames = atomic_load_explicit(&gBufferFrames[i], memory_order_acquire);
+    Float64 ticksPerPeriod = gHostTicksPerSecond * frames / kAH_SampleRate;
     UInt64 anchor = atomic_load_explicit(&gAnchorHostTime[i], memory_order_acquire);
     UInt64 now = mach_absolute_time();
     UInt64 elapsed = now > anchor ? now - anchor : 0;
-    UInt64 periods = (UInt64)((Float64)elapsed / gHostTicksPerPeriod);
-    *outSampleTime = (Float64)(periods * kAH_BufferFrames);
-    *outHostTime = anchor + (UInt64)((Float64)periods * gHostTicksPerPeriod);
+    UInt64 periods = (UInt64)((Float64)elapsed / ticksPerPeriod);
+    *outSampleTime = (Float64)(periods * frames);
+    *outHostTime = anchor + (UInt64)((Float64)periods * ticksPerPeriod);
     *outSeed = 1;
     return kAudioHardwareNoError;
 }
