@@ -1,5 +1,6 @@
 #include "../AudioHubDriver.c"
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 static int fails = 0;
@@ -14,6 +15,36 @@ static UInt32 getBuffer(AudioObjectID dev) {
 static OSStatus setBuffer(AudioObjectID dev, UInt32 frames) {
     AudioObjectPropertyAddress a = {kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
     return SetPropertyData(gDriverRef, dev, 0, &a, 0, NULL, sizeof frames, &frames);
+}
+
+// Simulasi siklus IO: tiap siklus menulis blok output lalu membaca input dua blok di belakang.
+// Pembacaan harus selalu mendapat data yang ditulis, tanpa nol, untuk ukuran buffer apa pun.
+static void ringCheck(UInt32 frames, int cycles) {
+    AudioObjectID dev = kAH_DeviceID(0);
+    AudioObjectID outS = kAH_OutputStreamID(0), inS = kAH_InputStreamID(0);
+    setBuffer(dev, frames);
+    StartIO(gDriverRef, dev, 1);
+    float* out = malloc(sizeof(float) * frames * kAH_Channels);
+    float* in = malloc(sizeof(float) * frames * kAH_Channels);
+    int zeros = 0, wrong = 0;
+    for (int n = 0; n < cycles; n++) {
+        for (UInt32 f = 0; f < frames * kAH_Channels; f++) out[f] = (float)(n + 1);
+        AudioServerPlugInIOCycleInfo wc = {0};
+        wc.mOutputTime.mSampleTime = (Float64)n * frames;
+        DoIOOperation(gDriverRef, dev, outS, 1, kAudioServerPlugInIOOperationWriteMix, frames, &wc, out, NULL);
+        AudioServerPlugInIOCycleInfo rc = {0};
+        rc.mInputTime.mSampleTime = (Float64)(n + 2) * frames;
+        DoIOOperation(gDriverRef, dev, inS, 1, kAudioServerPlugInIOOperationReadInput, frames, &rc, in, NULL);
+        // Blok yang dibaca di siklus n adalah blok yang ditulis di siklus n (posisi n*frames)
+        for (UInt32 f = 0; f < frames * kAH_Channels; f++) {
+            if (in[f] == 0.0f) zeros++;
+            else if (in[f] != (float)(n + 1)) wrong++;
+        }
+    }
+    printf("ring %3u frame: %d siklus, nol=%d, salah=%d\n", frames, cycles, zeros, wrong);
+    CHECK(zeros == 0 && wrong == 0);
+    StopIO(gDriverRef, dev, 1);
+    free(out); free(in);
 }
 
 int main(void) {
@@ -52,6 +83,11 @@ int main(void) {
 
     // 4. Perangkat kedua tidak ikut berubah
     CHECK(getBuffer(kAH_DeviceID(1)) == 512);
+
+    // 5. Ring untuk blok 192 dan 512 tidak boleh menghasilkan nol atau data salah
+    ringCheck(192, 2000);
+    ringCheck(512, 500);
+    setBuffer(dev, 512);
 
     printf("%s (%d gagal)\n", fails ? "ada yang gagal" : "semua uji buffer lulus", fails);
     return fails ? 1 : 0;
