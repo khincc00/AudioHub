@@ -170,8 +170,13 @@ struct DeviceInfo: Identifiable, Hashable {
     let name: String
     let inCh: Int
     let outCh: Int
+    let isVirtual: Bool   // transport virtual dari Core Audio (driver apa pun, bukan vendor tertentu)
     var id: String { uid }
 }
+
+// UID agregat yang dibuat AudioHub sendiri. Disembunyikan dari daftar perangkat supaya tidak
+// bisa dipilih sebagai perangkat fisik atau virtual. Harus sama dengan kAggregateUID di audiohub_io.cpp.
+private let audiohubAggregateUIDPrefix = "com.audiohub.app.aggregate"
 
 func systemDevices() -> [DeviceInfo] {
     var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
@@ -184,10 +189,20 @@ func systemDevices() -> [DeviceInfo] {
     return ids.compactMap { id in
         guard let name = cfStringProperty(id, kAudioObjectPropertyName),
               let uid = cfStringProperty(id, kAudioDevicePropertyDeviceUID) else { return nil }
+        if uid.hasPrefix(audiohubAggregateUIDPrefix) { return nil }
         return DeviceInfo(uid: uid, name: name,
                           inCh: channelCount(id, kAudioObjectPropertyScopeInput),
-                          outCh: channelCount(id, kAudioObjectPropertyScopeOutput))
+                          outCh: channelCount(id, kAudioObjectPropertyScopeOutput),
+                          isVirtual: transportType(id) == kAudioDeviceTransportTypeVirtual)
     }
+}
+
+private func transportType(_ id: AudioObjectID) -> UInt32 {
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var t: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &t) == noErr else { return 0 }
+    return t
 }
 
 private func cfStringProperty(_ id: AudioObjectID, _ sel: AudioObjectPropertySelector) -> String? {
@@ -236,8 +251,6 @@ final class Meters: ObservableObject {
 final class EngineController: ObservableObject {
     let meters = Meters()
     @Published var deviceName = "Maono ProStudio 2x2"
-    @Published var useVirtual = true      // EMEET Virtual Audio
-    @Published var useVirtual2 = false    // tidak dipakai (driver AudioHub Virtual sudah dihapus)
     @Published var autoReconnect: Bool = UserDefaults.standard.bool(forKey: "autoReconnect") {
         didSet { UserDefaults.standard.set(autoReconnect, forKey: "autoReconnect") }
     }
@@ -267,8 +280,46 @@ final class EngineController: ObservableObject {
     @Published var recordingOutput: Int? = nil
     @Published var recordedFile = ""
 
-    let virtualUID = "EMEET_VirtualAudio_UID"
-    let virtualUID2 = "com.audiohub.virtual.device2"
+    // Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang, apa pun vendornya.
+    // Kosong = tidak dipakai. Disimpan supaya tetap terpilih setelah aplikasi dibuka ulang.
+    @Published var virtualUID1: String = UserDefaults.standard.string(forKey: "virtualUID1") ?? "" {
+        didSet { UserDefaults.standard.set(virtualUID1, forKey: "virtualUID1") }
+    }
+    @Published var virtualUID2: String = UserDefaults.standard.string(forKey: "virtualUID2") ?? "" {
+        didSet { UserDefaults.standard.set(virtualUID2, forKey: "virtualUID2") }
+    }
+
+    // Nilai turunan untuk skema scene dan diagnostik.
+    var useVirtual: Bool { !virtualUID1.isEmpty }
+    var useVirtual2: Bool { !virtualUID2.isEmpty }
+
+    // Perangkat virtual yang bisa dipilih untuk Virtual 1 atau 2: transport virtual, punya input dan output,
+    // bukan perangkat fisik utama, dan tidak sama dengan slot lainnya.
+    func virtualCandidates(excluding uid: String) -> [DeviceInfo] {
+        devices.filter {
+            $0.isVirtual && $0.inCh > 0 && $0.outCh > 0 && $0.uid != uid && $0.name != deviceName
+        }
+    }
+
+    // Virtual device yang masuk aggregate saat terakhir dibuka, sesuai urutan kanal (uid1 lalu uid2).
+    private(set) var openedUID1 = ""
+    private(set) var openedUID2 = ""
+
+    var openedName1: String { openedUID1.isEmpty ? "" : deviceNameOf(openedUID1) }
+    var openedName2: String { openedUID2.isEmpty ? "" : deviceNameOf(openedUID2) }
+
+    func deviceNameOf(_ uid: String) -> String {
+        devices.first(where: { $0.uid == uid })?.name ?? uid
+    }
+
+    // Pemilik kanal dari backend: 0 fisik, 1 virtual 1, 2 virtual 2, -1 tidak diketahui; plus nomor kanal di perangkat itu.
+    func channelOwner(_ index: Int, output: Bool) -> (owner: Int, local: Int) {
+        guard let h = io else { return (-1, 0) }
+        var owner: Int32 = -1
+        var local: Int32 = 0
+        ah_io_channel_owner(h, output ? 1 : 0, Int32(index), &owner, &local)
+        return (Int(owner), Int(local))
+    }
 
     private var io: OpaquePointer?
     private var timer: Timer?
@@ -310,7 +361,7 @@ final class EngineController: ObservableObject {
     }
 
     private var virtualUIDsInUse: [String] {
-        (useVirtual ? [virtualUID] : []) + (useVirtual2 ? [virtualUID2] : [])
+        [virtualUID1, virtualUID2].filter { !$0.isEmpty }
     }
 
     // Peran yang perangkatnya tidak tersedia saat ini. Tidak pernah diganti diam-diam.
@@ -327,11 +378,17 @@ final class EngineController: ObservableObject {
     func open() {
         close()
         refreshDevices()
+        if useVirtual && useVirtual2 && virtualUID2 == virtualUID1 {
+            status = "Virtual 1 dan Virtual 2 harus perangkat yang berbeda"
+            return
+        }
         var buf = [CChar](repeating: 0, count: 256)
         let handle: OpaquePointer?
-        // Virtual 1 dipakai jika dicentang; jika hanya Virtual 2 yang dicentang, dialah yang masuk aggregate.
-        let uid1: String? = useVirtual ? virtualUID : (useVirtual2 ? virtualUID2 : nil)
+        // Virtual 1 dipakai jika dipilih; jika hanya Virtual 2 yang dipilih, dialah yang masuk aggregate.
+        let uid1: String? = useVirtual ? virtualUID1 : (useVirtual2 ? virtualUID2 : nil)
         let uid2: String? = (useVirtual && useVirtual2) ? virtualUID2 : nil
+        openedUID1 = uid1 ?? ""
+        openedUID2 = uid2 ?? ""
         if let u1 = uid1 {
             handle = ah_io_open_with_virtuals(deviceName, u1, uid2, &buf, 256)
         } else {
@@ -385,12 +442,21 @@ final class EngineController: ObservableObject {
         effectNames = text.split(separator: "\n").map(String.init).sorted()
     }
 
+    // Kanal virtual diberi nama perangkatnya, mis. "BlackHole 2ch · 1", supaya tidak tertukar antar vendor.
     func defaultInLabel(_ i: Int) -> String {
-        i < physIn ? "Fisik In \(i + 1)" : "Virtual In \(i - physIn + 1)"
+        if i < physIn { return "Fisik In \(i + 1)" }
+        let (owner, local) = channelOwner(i, output: false)
+        if owner == 1 && !openedName1.isEmpty { return "\(openedName1) · \(local)" }
+        if owner == 2 && !openedName2.isEmpty { return "\(openedName2) · \(local)" }
+        return "Virtual In \(i - physIn + 1)"
     }
 
     func defaultOutLabel(_ j: Int) -> String {
-        j < physOut ? "Fisik Out \(j + 1)" : "Virtual Out \(j - physOut + 1)"
+        if j < physOut { return "Fisik Out \(j + 1)" }
+        let (owner, local) = channelOwner(j, output: true)
+        if owner == 1 && !openedName1.isEmpty { return "\(openedName1) · \(local)" }
+        if owner == 2 && !openedName2.isEmpty { return "\(openedName2) · \(local)" }
+        return "Virtual Out \(j - physOut + 1)"
     }
 
     // Nama yang tampil: nama buatan pengguna jika ada, selain itu nama default
@@ -478,10 +544,16 @@ final class EngineController: ObservableObject {
 
     // MARK: - Routing, send, gain, mute
 
+    // Route boleh dibuat? Aturan ada di backend (virtual → virtual hanya antar perangkat virtual berbeda).
+    func routeAllowed(_ i: Int, _ j: Int) -> Bool {
+        guard let h = io else { return false }
+        return ah_io_route_allowed(h, Int32(i), Int32(j)) == 1
+    }
+
     func setRoute(_ i: Int, _ j: Int, _ on: Bool) {
         guard io != nil else { return }
-        if i >= physIn && j >= physOut && on {
-            status = "Ditolak: route virtual ke virtual akan membentuk loop"
+        if on && !routeAllowed(i, j) {
+            status = "Ditolak: route virtual ke virtual dalam perangkat yang sama akan membentuk loop"
             return
         }
         routes[i][j] = on
@@ -712,11 +784,24 @@ final class EngineController: ObservableObject {
 
     // MARK: - Binding peran
 
+    // UID perangkat dan nomor kanal untuk kanal virtual. Saat terbuka dari backend; saat tertutup dari pilihan tersimpan.
+    private func virtualBinding(_ index: Int, output: Bool, fallbackIndex v: Int) -> (uid: String, channel: Int) {
+        guard isOpen else {
+            let uids = virtualUIDsInUse
+            return (v / 2 < uids.count ? uids[v / 2] : "", v % 2 + 1)
+        }
+        let (owner, local) = channelOwner(index, output: output)
+        switch owner {
+        case 1: return (openedUID1, local)
+        case 2: return (openedUID2, local)
+        default: return ("", 0)
+        }
+    }
+
     // Binding untuk setiap input dan output saat ini, dengan peran logis.
     func currentBindings() -> [SceneBinding] {
         let physical = devices.first(where: { $0.name == deviceName })
         let physUID = physical?.uid ?? ""
-        let vUIDs = virtualUIDsInUse
         var result: [SceneBinding] = []
         for i in 0..<inputs {
             if i < physIn {
@@ -724,9 +809,9 @@ final class EngineController: ObservableObject {
                 result.append(SceneBinding(role: role, kind: "physical", deviceUID: physUID, deviceName: deviceName, channel: i + 1))
             } else {
                 let v = i - physIn
-                let uid = v / 2 < vUIDs.count ? vUIDs[v / 2] : ""
-                result.append(SceneBinding(role: "Virtual Input \(v + 1)", kind: "virtual", deviceUID: uid,
-                                           deviceName: devices.first(where: { $0.uid == uid })?.name ?? "", channel: v % 2 + 1))
+                let b = virtualBinding(i, output: false, fallbackIndex: v)
+                result.append(SceneBinding(role: "Virtual Input \(v + 1)", kind: "virtual", deviceUID: b.uid,
+                                           deviceName: devices.first(where: { $0.uid == b.uid })?.name ?? "", channel: b.channel))
             }
         }
         for j in 0..<outputs {
@@ -735,9 +820,9 @@ final class EngineController: ObservableObject {
                 result.append(SceneBinding(role: role, kind: "physical", deviceUID: physUID, deviceName: deviceName, channel: j + 1))
             } else {
                 let v = j - physOut
-                let uid = v / 2 < vUIDs.count ? vUIDs[v / 2] : ""
-                result.append(SceneBinding(role: "Virtual Output \(v + 1)", kind: "virtual", deviceUID: uid,
-                                           deviceName: devices.first(where: { $0.uid == uid })?.name ?? "", channel: v % 2 + 1))
+                let b = virtualBinding(j, output: true, fallbackIndex: v)
+                result.append(SceneBinding(role: "Virtual Output \(v + 1)", kind: "virtual", deviceUID: b.uid,
+                                           deviceName: devices.first(where: { $0.uid == b.uid })?.name ?? "", channel: b.channel))
             }
         }
         return result
@@ -806,11 +891,11 @@ final class EngineController: ObservableObject {
             status = "Preset \"\(scene.name)\" tidak cocok dengan jumlah kanal perangkat"
             return
         }
-        // Route yang menyambung virtual ke virtual ditolak
+        // Route yang tidak diizinkan backend (virtual ke virtual dalam perangkat yang sama) ditolak
         for r in scene.routes where r.enabled {
             guard let i = Int(r.from.dropFirst(3)), let j = Int(r.to.dropFirst(4)) else { status = "Route tidak valid"; return }
-            if i >= physIn && j >= physOut {
-                status = "Preset berisi route virtual ke virtual, ditolak"
+            if !routeAllowed(i, j) {
+                status = "Preset berisi route yang tidak diizinkan, ditolak"
                 return
             }
         }

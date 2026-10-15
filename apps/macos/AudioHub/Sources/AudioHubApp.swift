@@ -1,5 +1,29 @@
 import SwiftUI
 
+// Tema tampilan: ikuti macOS (default), terang, atau gelap. Disimpan di UserDefaults.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "Sistem"
+        case .light: return "Terang"
+        case .dark: return "Gelap"
+        }
+    }
+
+    // nil = ikuti pengaturan macOS
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 // MARK: - Gaya
 
 // Palet dan ukuran dipusatkan di sini. Warna aksen sendiri, tidak memakai identitas merek lain.
@@ -7,9 +31,9 @@ enum Style {
     static let accent = Color(red: 0.30, green: 0.82, blue: 0.74)
     static let warning = Color(red: 0.98, green: 0.72, blue: 0.30)
     static let danger = Color(red: 0.95, green: 0.35, blue: 0.35)
-    static let surface = Color.white.opacity(0.045)
-    static let surfaceStrong = Color.white.opacity(0.08)
-    static let hairline = Color.white.opacity(0.08)
+    static let surface = Color.primary.opacity(0.045)
+    static let surfaceStrong = Color.primary.opacity(0.08)
+    static let hairline = Color.primary.opacity(0.08)
     static let muted = Color.secondary
     static let channelColors: [Color] = [
         Color(red: 0.30, green: 0.82, blue: 0.74),
@@ -124,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct AudioHubApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var engine = EngineController()
+    @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
 
     // Mode snapshot: `AudioHub --snapshot /path/file.png` merender tampilan ke PNG lalu keluar.
     private var snapshotPath: String? {
@@ -138,7 +163,7 @@ struct AudioHubApp: App {
                 .environmentObject(engine)
                 .environmentObject(engine.meters)
                 .frame(minWidth: 1120, minHeight: 720)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(AppearanceMode(rawValue: appearance)?.colorScheme)
                 .onAppear {
                     if let path = snapshotPath {
                         engine.open()
@@ -171,6 +196,7 @@ func writeSnapshot(engine: EngineController, path: String) {
 // MARK: - Jendela utama
 
 struct ContentView: View {
+    @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
     @EnvironmentObject var engine: EngineController
     @State private var showGraph = false
     @State private var rightTab = 0
@@ -223,7 +249,8 @@ struct ContentView: View {
             .frame(width: 230)
 
             Menu {
-                Toggle("EMEET Virtual Audio", isOn: $engine.useVirtual)
+                virtualPicker("Virtual 1", selection: $engine.virtualUID1, exclude: engine.virtualUID2)
+                virtualPicker("Virtual 2", selection: $engine.virtualUID2, exclude: engine.virtualUID1)
             } label: {
                 Label(virtualSummary, systemImage: "rectangle.connected.to.line.below")
             }
@@ -261,6 +288,12 @@ struct ContentView: View {
             Menu {
                 Toggle("Sambung ulang otomatis", isOn: $engine.autoReconnect)
                 Divider()
+                Picker("Tampilan", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.label).tag(mode.rawValue)
+                    }
+                }
+                Divider()
                 Button("Perbarui daftar perangkat") { engine.refreshDevices() }
             } label: {
                 Image(systemName: "gearshape")
@@ -279,6 +312,22 @@ struct ContentView: View {
         case (true, false): return "Virtual 1"
         case (false, true): return "Virtual 2"
         default: return "Tanpa virtual"
+        }
+    }
+
+    // Pemilih perangkat virtual: "Tidak ada" atau salah satu perangkat virtual yang terpasang.
+    // Perangkat yang sedang dipilih tapi tidak terpasang tetap tampil, supaya pilihan tidak hilang diam-diam.
+    @ViewBuilder
+    private func virtualPicker(_ title: String, selection: Binding<String>, exclude: String) -> some View {
+        Picker(title, selection: selection) {
+            Text("Tidak ada").tag("")
+            ForEach(engine.virtualCandidates(excluding: exclude)) { d in
+                Text(d.name).tag(d.uid)
+            }
+            if !selection.wrappedValue.isEmpty,
+               !engine.virtualCandidates(excluding: exclude).contains(where: { $0.uid == selection.wrappedValue }) {
+                Text("\(selection.wrappedValue) (tidak tersedia)").tag(selection.wrappedValue)
+            }
         }
     }
 
@@ -355,7 +404,7 @@ struct ContentView: View {
         HStack(spacing: 14) {
             legendItem(Style.accent, "Tersambung")
             legendItem(Style.surfaceStrong, "Terputus")
-            legendItem(Color.black.opacity(0.35), "Tidak tersedia (virtual → virtual)")
+            legendItem(Color.black.opacity(0.35), "Tidak tersedia (virtual → virtual, perangkat sama)")
             Spacer()
             Text("Klik kanan untuk send").font(.caption2).foregroundStyle(.tertiary)
         }
@@ -572,7 +621,7 @@ struct RouteCell: View {
     @EnvironmentObject var engine: EngineController
 
     var body: some View {
-        let blocked = input >= engine.physIn && output >= engine.physOut
+        let blocked = !engine.routeAllowed(input, output)
         let on = engine.routes[input][output]
         let send = engine.sends[input][output]
 
@@ -601,7 +650,7 @@ struct RouteCell: View {
             Divider()
             Button("Matikan koneksi") { engine.setRoute(input, output, false) }
         }
-        .help(blocked ? "Virtual → virtual tidak bisa dihubungkan" : "\(engine.inLabel(input)) → \(engine.outLabel(output))")
+        .help(blocked ? "Virtual → virtual dalam perangkat yang sama tidak bisa dihubungkan" : "\(engine.inLabel(input)) → \(engine.outLabel(output))")
     }
 }
 

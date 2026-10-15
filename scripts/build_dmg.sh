@@ -1,6 +1,6 @@
 #!/bin/sh
-# Membangun AudioHub-0.1.dmg: paket instalasi untuk aplikasi, dibungkus DMG.
-# Aplikasi masuk ke /Applications. Perangkat virtual (mis. EMEET Virtual Audio) dipasang terpisah oleh vendornya.
+# Membangun AudioHub-0.2.0.dmg: paket instalasi untuk aplikasi, dibungkus DMG.
+# Aplikasi masuk ke /Applications. Perangkat virtual (mis. perangkat virtual) dipasang terpisah oleh vendornya.
 # Ditandatangani Developer ID. Notarisasi dilakukan terpisah (lihat docs/release/checklist.md).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,7 +9,7 @@ PRODUCTS="$BUILD/products"
 STAGE="$BUILD/stage"
 DMG_SRC="$BUILD/dmg"
 PKG_NAME="Install AudioHub.pkg"
-DMG="$ROOT/build/AudioHub-0.1.dmg"
+DMG="$ROOT/build/AudioHub-0.2.0.dmg"
 APP_ID="${APP_ID:-Developer ID Application: taufiq sholikhin (MYQ2H766UX)}"
 INSTALLER_ID="${INSTALLER_ID:-Developer ID Installer: taufiq sholikhin (MYQ2H766UX)}"
 
@@ -39,11 +39,11 @@ with open(path, "wb") as f:
     plistlib.dump(comps, f)
 PY
 
-PKG="$BUILD/AudioHub-0.1.pkg"
+PKG="$BUILD/AudioHub-0.2.0.pkg"
 pkgbuild --root "$STAGE" \
     --component-plist "$BUILD/components.plist" \
     --identifier com.audiohub.installer \
-    --version 0.1 \
+    --version 0.2.0 \
     --install-location / \
     --ownership recommended \
     --sign "$INSTALLER_ID" \
@@ -52,7 +52,7 @@ pkgbuild --root "$STAGE" \
 # DMG hanya berisi installer
 mkdir -p "$DMG_SRC"
 cp "$PKG" "$DMG_SRC/$PKG_NAME"
-hdiutil create -volname "AudioHub 0.1" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "AudioHub 0.2.0" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$APP_ID" --timestamp "$DMG"
 
 echo "DMG: $DMG"

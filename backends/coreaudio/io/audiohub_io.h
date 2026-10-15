@@ -25,8 +25,9 @@ typedef struct AHIOStats {
 // errBuf berisi pesan singkat.
 AHIO* ah_io_open(const char* deviceNameContains, char* errBuf, int errLen);
 
-// Membuat aggregate privat sementara: master = perangkat fisik, sub-device = perangkat virtual
-// (dengan drift compensation). Aggregate dihapus saat ah_io_close.
+// Membuat aggregate sementara yang terlihat di Core Audio (UID tetap, DAW bisa memilihnya):
+// master = perangkat fisik, sub-device = perangkat virtual (dengan drift compensation).
+// Aggregate dihapus saat ah_io_close.
 AHIO* ah_io_open_with_virtual(const char* masterNameContains, const char* virtualUID, char* errBuf, int errLen);
 // Sama seperti di atas, dengan dua virtual device. virtualUID2 boleh NULL.
 AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtualUID1, const char* virtualUID2, char* errBuf, int errLen);
@@ -38,9 +39,14 @@ int ah_io_inputs(AHIO* io);
 int ah_io_outputs(AHIO* io);
 
 // Mengembalikan 0 jika berhasil, -1 jika ditolak. Route dari input virtual ke output virtual
-// selalu ditolak: driver virtual meloopback output ke input, sehingga akan membentuk loop.
+// ditolak jika keduanya dari virtual device yang sama: driver meloopback output ke input, sehingga
+// akan membentuk loop. Antar dua virtual device berbeda diizinkan.
 int ah_io_set_route(AHIO* io, int input, int output, int enabled, float sendDb);
-// Jumlah kanal milik perangkat fisik (sisanya kanal virtual) di dalam aggregate.
+// 1 jika route boleh dibuat (sama dengan aturan di ah_io_set_route), 0 jika tidak.
+int ah_io_route_allowed(AHIO* io, int input, int output);
+// Perangkat pemilik kanal: 0 = fisik, 1 = virtual 1, 2 = virtual 2, -1 jika indeks di luar kanal.
+// local = nomor kanal di dalam perangkat itu, mulai dari 1. output = 0 untuk input, 1 untuk output.
+void ah_io_channel_owner(AHIO* io, int output, int channel, int* owner, int* local);// Jumlah kanal milik perangkat fisik (sisanya kanal virtual) di dalam aggregate.
 int ah_io_physical_inputs(AHIO* io);
 // 1 jika perangkat masih terpasang dan hidup di Core Audio, 0 jika sudah hilang.
 int ah_io_is_alive(AHIO* io);

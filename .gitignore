@@ -9,3 +9,6 @@ DerivedData/
 # Status Xcode pribadi per pengguna
 xcuserdata/
 *.xcuserstate
+
+# Folder driver pihak ketiga: lisensi distribusi belum diperiksa, jangan di-commit
+Driver/

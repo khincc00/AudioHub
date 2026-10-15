@@ -1,12 +1,12 @@
 // Spike Tahap 2: routing lewat virtual cable.
-// Membuat aggregate device privat (PS22 sebagai master, EMEET Virtual Audio sebagai sub-device
+// Membuat aggregate device privat (PS22 sebagai master, perangkat virtual sebagai sub-device
 // dengan drift compensation), menjalankan engine di atasnya, lalu menghapus aggregate.
 // Mode:
-//   receive : audio yang diputar ke EMEET output 1 (seolah dari aplikasi) → EMEET input 1 → engine → PS22 output 1 dan 2
-//   send    : input 1 PS22 (mic) → engine → EMEET output 1 (virtual cable) → EMEET input 1 (diukur kembali)
+//   receive : audio yang diputar ke virtual output 1 (seolah dari aplikasi) → virtual input 1 → engine → PS22 output 1 dan 2
+//   send    : input 1 PS22 (mic) → engine → virtual output 1 (virtual cable) → virtual input 1 (diukur kembali)
 // Pemakaian: ./virtual_cable [receive|send|mixminus] [detik=10] [UID virtual device]
-// mixminus: ps-out1 = monitor, ps-out2 = virtual mic (pengukuran), ps-in1 = Voice, emeet-in1 = Desktop, emeet-in2 = Communication
-// Default UID: EMEET. Untuk AudioHub: com.audiohub.virtual.device
+// mixminus: ps-out1 = monitor, ps-out2 = virtual mic (pengukuran), ps-in1 = Voice, virt-in1 = Desktop, virt-in2 = Communication
+// Default UID: VIRTUAL_DEVICE_UID. Untuk AudioHub: com.audiohub.virtual.device
 // Peringatan: mode receive dan send MEMUTAR audio. Pakai headphone. Jangan pasang kabel loopback.
 #include "../../../engine/graph/graph.h"
 
@@ -22,7 +22,7 @@
 #include <unistd.h>
 
 static const char* kPS22UID = "AppleUSBAudioEngine:Maono ProStudio 2x2:Maono ProStudio 2x2:100000:1,2";
-static const char* kVirtualUID = "EMEET_VirtualAudio_UID";   // bisa diganti argumen ketiga
+static const char* kVirtualUID = "VIRTUAL_DEVICE_UID";   // bisa diganti argumen ketiga
 static const char* kAggUID = "com.audiohub.spike.tahap2";
 
 static AudioObjectPropertyAddress addr(AudioObjectPropertySelector sel) {
@@ -78,7 +78,7 @@ static void destroyAggregate(AudioObjectID agg) {
     if (agg != kAudioObjectUnknown) AudioHardwareDestroyAggregateDevice(agg);
 }
 
-// Buffer statis, tidak ada alokasi di callback. Empat input: PS22 1–2, EMEET 1–2.
+// Buffer statis, tidak ada alokasi di callback. Empat input: PS22 1–2, virtual 1–2.
 constexpr int kMaxFrames = 4096;
 constexpr int kIn = 4;
 constexpr int kOut = 4;
@@ -158,9 +158,9 @@ int main(int argc, char** argv) {
     bool send = mode == "send";
     bool mixminus = mode == "mixminus";
 
-    // Node channel berurutan: PS22 1, PS22 2, EMEET 1, EMEET 2
-    for (int i = 0; i < kIn; i++) inNode[i] = graph.addChannel(i < 2 ? "ps-in" : "emeet-in");
-    for (int o = 0; o < kOut; o++) outNode[o] = graph.addOutput(o < 2 ? "ps-out" : "emeet-out");
+    // Node channel berurutan: PS22 1, PS22 2, virtual 1, virtual 2
+    for (int i = 0; i < kIn; i++) inNode[i] = graph.addChannel(i < 2 ? "ps-in" : "virt-in");
+    for (int o = 0; o < kOut; o++) outNode[o] = graph.addOutput(o < 2 ? "ps-out" : "virt-out");
     int busL = graph.addBus("desktop-L");
     int busR = graph.addBus("desktop-R");
     int busVoice = graph.addBus("voice");
@@ -185,10 +185,10 @@ int main(int argc, char** argv) {
         graph.connect(vmic, outNode[1]);
     } else if (send) {
         graph.connect(inNode[0], busVoice);
-        graph.connect(busVoice, outNode[2]);     // ke EMEET output 1 (virtual cable)
+        graph.connect(busVoice, outNode[2]);     // ke virtual output 1 (virtual cable)
     } else {
-        graph.connect(inNode[2], busL);          // EMEET in 1 (app) → Desktop L
-        graph.connect(inNode[3], busR);          // EMEET in 2 (app) → Desktop R
+        graph.connect(inNode[2], busL);          // virtual in 1 (app) → Desktop L
+        graph.connect(inNode[3], busR);          // virtual in 2 (app) → Desktop R
         graph.connect(busL, outNode[0]);         // → PS22 output 1
         graph.connect(busR, outNode[1]);         // → PS22 output 2
     }
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
     for (int s = 1; s <= seconds; s++) {
         usleep(1000000);
         uint64_t cb = callbacks.load(), dr = dropouts.load(), mf = missingFrames.load();
-        printf("t=%3ds  cb=%llu drop=%llu hilang=%llu | ps-in1=%.1f emeet-in1=%.1f | ps-out1=%.1f ps-out2=%.1f emeet-out1=%.1f dBFS\n",
+        printf("t=%3ds  cb=%llu drop=%llu hilang=%llu | ps-in1=%.1f virt-in1=%.1f | ps-out1=%.1f ps-out2=%.1f virt-out1=%.1f dBFS\n",
                s, (unsigned long long)(cb - lastCb), (unsigned long long)(dr - lastDr),
                (unsigned long long)(mf - lastMf),
                db(meterIn[0].load()), db(meterIn[2].load()),
