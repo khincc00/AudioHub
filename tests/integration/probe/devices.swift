@@ -61,7 +61,7 @@ func bufferRange(_ id: AudioObjectID) -> (Float64, Float64) {
 for id in devices() {
     let name = cfString(id, kAudioObjectPropertyName)
     let uid = cfString(id, kAudioDevicePropertyDeviceUID)
-    guard name.contains("Maono") || name.contains("EMEET") || name.contains("MacBook Air Microphone") else { continue }
+    guard name.contains("Maono") || name.contains("Virtual") || name.contains("MacBook Air Microphone") else { continue }
     let inCh = channels(id, kAudioObjectPropertyScopeInput)
     let outCh = channels(id, kAudioObjectPropertyScopeOutput)
     let rate = float64(id, kAudioDevicePropertyNominalSampleRate)

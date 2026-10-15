@@ -89,7 +89,7 @@
     },
     "routes": {
       "type": "array",
-      "description": "Koneksi input ke output. Route virtual ke virtual tidak diizinkan.",
+      "description": "Koneksi input ke output. Route virtual ke virtual hanya diizinkan antar perangkat virtual yang berbeda.",
       "items": {
         "type": "object",
         "required": ["from", "to", "sendDb", "enabled"],

@@ -249,7 +249,8 @@ struct ContentView: View {
             .frame(width: 230)
 
             Menu {
-                Toggle("EMEET Virtual Audio", isOn: $engine.useVirtual)
+                virtualPicker("Virtual 1", selection: $engine.virtualUID1, exclude: engine.virtualUID2)
+                virtualPicker("Virtual 2", selection: $engine.virtualUID2, exclude: engine.virtualUID1)
             } label: {
                 Label(virtualSummary, systemImage: "rectangle.connected.to.line.below")
             }
@@ -311,6 +312,22 @@ struct ContentView: View {
         case (true, false): return "Virtual 1"
         case (false, true): return "Virtual 2"
         default: return "Tanpa virtual"
+        }
+    }
+
+    // Pemilih perangkat virtual: "Tidak ada" atau salah satu perangkat virtual yang terpasang.
+    // Perangkat yang sedang dipilih tapi tidak terpasang tetap tampil, supaya pilihan tidak hilang diam-diam.
+    @ViewBuilder
+    private func virtualPicker(_ title: String, selection: Binding<String>, exclude: String) -> some View {
+        Picker(title, selection: selection) {
+            Text("Tidak ada").tag("")
+            ForEach(engine.virtualCandidates(excluding: exclude)) { d in
+                Text(d.name).tag(d.uid)
+            }
+            if !selection.wrappedValue.isEmpty,
+               !engine.virtualCandidates(excluding: exclude).contains(where: { $0.uid == selection.wrappedValue }) {
+                Text("\(selection.wrappedValue) (tidak tersedia)").tag(selection.wrappedValue)
+            }
         }
     }
 
@@ -387,7 +404,7 @@ struct ContentView: View {
         HStack(spacing: 14) {
             legendItem(Style.accent, "Tersambung")
             legendItem(Style.surfaceStrong, "Terputus")
-            legendItem(Color.black.opacity(0.35), "Tidak tersedia (virtual → virtual)")
+            legendItem(Color.black.opacity(0.35), "Tidak tersedia (virtual → virtual, perangkat sama)")
             Spacer()
             Text("Klik kanan untuk send").font(.caption2).foregroundStyle(.tertiary)
         }
@@ -604,7 +621,7 @@ struct RouteCell: View {
     @EnvironmentObject var engine: EngineController
 
     var body: some View {
-        let blocked = input >= engine.physIn && output >= engine.physOut
+        let blocked = !engine.routeAllowed(input, output)
         let on = engine.routes[input][output]
         let send = engine.sends[input][output]
 
@@ -633,7 +650,7 @@ struct RouteCell: View {
             Divider()
             Button("Matikan koneksi") { engine.setRoute(input, output, false) }
         }
-        .help(blocked ? "Virtual → virtual tidak bisa dihubungkan" : "\(engine.inLabel(input)) → \(engine.outLabel(output))")
+        .help(blocked ? "Virtual → virtual dalam perangkat yang sama tidak bisa dihubungkan" : "\(engine.inLabel(input)) → \(engine.outLabel(output))")
     }
 }
 

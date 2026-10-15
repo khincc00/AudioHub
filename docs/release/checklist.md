@@ -12,7 +12,7 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [x] Tanda tangan developer ID untuk aplikasi (build Release dari `AudioHub.xcodeproj`, Hardened Runtime, timestamp).
 - [ ] Notarisasi Apple. Butuh akun developer Anda.
 - [ ] Uji instalasi paket di mesin bersih, termasuk uninstall.
-- [~] Pemasangan ulang driver dengan dua perangkat: dibatalkan. Driver AudioHub sudah tidak dipakai; jalur virtual memakai EMEET Virtual Audio.
+- [~] Pemasangan ulang driver dengan dua perangkat: dibatalkan. Driver AudioHub sudah tidak dipakai; jalur virtual memakai perangkat virtual.
 
 ## Fungsi
 
@@ -31,7 +31,7 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 ## Stabilitas
 
 - [x] Tes 60 detik dan 30 menit pada PS22 (spike passthrough), 0 dropout.
-- [ ] Endurance 30 menit lewat aggregate dengan EMEET Virtual Audio (belum dijalankan setelah perubahan ke buffer 512).
+- [ ] Endurance 30 menit lewat aggregate dengan perangkat virtual (belum dijalankan setelah perubahan ke buffer 512).
 - [ ] Endurance 8 jam (kriteria blueprint). Belum dijalankan.
 
 ## Yang belum dikerjakan
@@ -58,8 +58,8 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 
 ## Yang belum selesai setelah perbaikan klik dan klip
 
-- [ ] Rekaman REAPER dengan suara bicara pada jalur EMEET 512 (belum direkam ulang setelah perbaikan).
-- [ ] Aplikasi masih bergantung pada EMEET Virtual Audio (UID `EMEET_VirtualAudio_UID`). Pilihan perangkat virtual umum belum dikerjakan.
-- [ ] Lisensi driver EMEET Virtual Audio untuk distribusi belum diperiksa. Driver itu tidak disertakan di DMG.
+- [ ] Rekaman REAPER dengan suara bicara pada jalur virtual 512 (belum direkam ulang setelah perbaikan).
+- [x] Aplikasi tidak lagi terikat ke satu vendor. Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang (transport virtual dari Core Audio). Diuji dengan perangkat virtual vendor dan BlackHole 2ch; VB-Cable belum diuji sebagai agregat.
+- [ ] Lisensi driver perangkat virtual untuk distribusi belum diperiksa. Driver itu tidak disertakan di DMG.
 - [ ] Penyebab lonjakan CPU coreaudiod yang kadang tinggi belum diketahui.
 - [ ] Penyebab bundle `/Applications/AudioHub.app` pernah hilang belum diketahui.

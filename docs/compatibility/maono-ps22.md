@@ -165,9 +165,9 @@ Hasil ini mengoreksi tes `playdual` sebelumnya, yang tampak tidak memisahkan kan
 
 Pemetaan ini masih perlu diverifikasi secara objektif dengan loopback elektrik untuk memastikan angka kebocoran dan latensi.
 
-## Loopback lewat virtual cable (EMEET Virtual Audio)
+## Loopback lewat virtual cable (perangkat virtual)
 
-Tes ini memakai `EMEET Virtual Audio` sebagai jalur virtual, bukan kabel fisik. Tone 880 Hz diputar ke **output kanal 1** selama 3 detik, lalu direkam dari input perangkat yang sama dengan `capture`.
+Tes ini memakai `perangkat virtual` sebagai jalur virtual, bukan kabel fisik. Tone 880 Hz diputar ke **output kanal 1** selama 3 detik, lalu direkam dari input perangkat yang sama dengan `capture`.
 
 | Waktu | Kanal 1 | Kanal 2 |
 |---|---|---|
@@ -182,7 +182,7 @@ Hasil:
 
 Yang belum diukur di tes ini: latensi. Pengukuran per sampel diperlukan, misalnya dengan klik dan deteksi onset.
 
-Catatan: ini membuktikan jalur virtual EMEET, bukan PS22. Untuk PS22, loopback fisik atau virtual pada perangkat itu sendiri masih perlu dilakukan.
+Catatan: ini membuktikan jalur virtual virtual, bukan PS22. Untuk PS22, loopback fisik atau virtual pada perangkat itu sendiri masih perlu dilakukan.
 
 ## Loopback kabel fisik (output 1 → input 1, output 2 → input 2)
 

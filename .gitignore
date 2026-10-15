@@ -10,5 +10,5 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 
-# Driver pihak ketiga (EMEET): lisensi distribusi belum diperiksa, jangan di-commit
-Driver/EMEET Driver/
+# Folder driver pihak ketiga: lisensi distribusi belum diperiksa, jangan di-commit
+Driver/

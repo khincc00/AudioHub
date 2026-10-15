@@ -2,6 +2,7 @@
 
 #include "../../../engine/api/audiohub_engine.h"
 #include "au_insert.h"
+#include "route_policy.h"
 
 #include <CoreAudio/CoreAudio.h>
 #include <atomic>
@@ -17,9 +18,12 @@ namespace {
 
 constexpr int kMaxCh = 8;
 constexpr int kMaxFrames = 4096;
-// Buffer yang harus sama di semua sub-device agregat. PS22 dan EMEET Virtual Audio berjalan di 512 frame.
+// Buffer yang harus sama di semua sub-device agregat. PS22 dan perangkat virtual berjalan di 512 frame.
 // Jika agregat (mis. 192) tidak cocok dengan sub-device (512), HAL menyisipkan klik periodik saat ada klien kedua.
 constexpr UInt32 kPreferredBufferFrames = 512;
+// UID agregat yang terlihat di Core Audio. Dipakai tetap supaya DAW bisa mengingat pilihannya.
+// Agregat dengan UID berawalan ini dianggap milik AudioHub dan dihapus saat dibuka atau ditutup.
+constexpr const char* kAggregateUID = "com.audiohub.app.aggregate";
 
 AudioObjectPropertyAddress addr(AudioObjectPropertySelector sel, AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
     return {sel, scope, kAudioObjectPropertyElementMain};
@@ -73,6 +77,8 @@ struct AHIO {
     AHEngine* engine = nullptr;
     int nIn = 0, nOut = 0;
     int physIn = 0, physOut = 0;
+    // Jumlah kanal tiap virtual device, per sisi. Nol jika device tidak dipakai.
+    int virt1In = 0, virt1Out = 0, virt2In = 0, virt2Out = 0;
     uint32_t bufferFrames = 0;
     double sampleRate = 0;
 
@@ -175,7 +181,28 @@ static AudioObjectID findDevice(const char* contains) {
     return kAudioObjectUnknown;
 }
 
+// Menghapus agregat AudioHub yang masih tertinggal, misalnya setelah crash. Hanya UID berawalan
+// kAggregateUID yang disentuh; perangkat lain tidak diubah.
+static void destroyStaleAggregates() {
+    auto a = addr(kAudioHardwarePropertyDevices);
+    UInt32 size = 0;
+    AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &a, 0, nullptr, &size);
+    std::unique_ptr<AudioObjectID[]> ids(new AudioObjectID[size / sizeof(AudioObjectID)]);
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &size, ids.get());
+    for (UInt32 i = 0; i < size / sizeof(AudioObjectID); i++) {
+        auto uidAddr = addr(kAudioDevicePropertyDeviceUID);
+        CFStringRef uid = nullptr;
+        UInt32 sz = sizeof(uid);
+        if (AudioObjectGetPropertyData(ids[i], &uidAddr, 0, nullptr, &sz, &uid) != noErr || !uid) continue;
+        char buf[256] = {0};
+        CFStringGetCString(uid, buf, sizeof(buf), kCFStringEncodingUTF8);
+        CFRelease(uid);
+        if (strncmp(buf, kAggregateUID, strlen(kAggregateUID)) == 0) AudioHardwareDestroyAggregateDevice(ids[i]);
+    }
+}
+
 static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUID1, const char* virtualUID2) {
+    destroyStaleAggregates();
     auto masterUIDAddr = addr(kAudioDevicePropertyDeviceUID);
     CFStringRef masterUID = nullptr;
     UInt32 sz = sizeof(masterUID);
@@ -187,7 +214,7 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
         const void* vals[] = {uid, drift ? kCFBooleanTrue : kCFBooleanFalse};
         return CFDictionaryCreate(nullptr, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     };
-    // Clock master = perangkat virtual (EMEET), supaya clock agregat tidak mengikuti PS22.
+    // Clock master = perangkat virtual 1, supaya clock agregat tidak mengikuti PS22.
     // PS22 tetap sub-device pertama agar urutan kanal tidak berubah,
     // dengan drift compensation karena clock-nya tidak lagi menjadi master.
     CFMutableArrayRef subList = CFArrayCreateMutable(nullptr, 3, &kCFTypeArrayCallBacks);
@@ -204,13 +231,16 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
         CFArrayAppendValue(subList, vd2);
     }
     CFArrayRef subs = subList;
+    // Agregat terlihat (private = false) agar DAW bisa memilihnya. UID lama dengan nama yang sama sudah
+    // dihapus di destroyStaleAggregates, karena HAL menolak membuat UID yang sudah ada (kAudioHardwareIllegalOperationError).
+    CFStringRef aggUID = CFStringCreateWithCString(nullptr, kAggregateUID, kCFStringEncodingUTF8);
     const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master")};
-    CFStringRef aggUID = CFSTR("com.audiohub.app.aggregate");
-    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanTrue, subs, vUID1};
+    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanFalse, subs, vUID1};
     CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     AudioObjectID agg = kAudioObjectUnknown;
     OSStatus st = AudioHardwareCreateAggregateDevice(desc, &agg);
     CFRelease(desc);
+    CFRelease(aggUID);
     CFRelease(subs);
     CFRelease(ps);
     CFRelease(vd1);
@@ -259,6 +289,15 @@ AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtu
         // Kanal fisik = kanal master; sisanya dari sub-device virtual
         io->physIn = channelsOf(master, kAudioObjectPropertyScopeInput);
         io->physOut = channelsOf(master, kAudioObjectPropertyScopeOutput);
+        // Urutan kanal di agregat: fisik, virtual 1, virtual 2
+        AudioObjectID v1 = deviceForUID(virtualUID1);
+        io->virt1In = channelsOf(v1, kAudioObjectPropertyScopeInput);
+        io->virt1Out = channelsOf(v1, kAudioObjectPropertyScopeOutput);
+        if (virtualUID2 && virtualUID2[0]) {
+            AudioObjectID v2 = deviceForUID(virtualUID2);
+            io->virt2In = channelsOf(v2, kAudioObjectPropertyScopeInput);
+            io->virt2Out = channelsOf(v2, kAudioObjectPropertyScopeOutput);
+        }
     }
     return io;
 }
@@ -446,9 +485,33 @@ void ah_io_record_stats(AHIO* io, uint64_t* written, uint64_t* dropped) {
 int ah_io_inputs(AHIO* io) { return io ? io->nIn : 0; }
 int ah_io_outputs(AHIO* io) { return io ? io->nOut : 0; }
 
+static audiohub::ChannelLayout layoutOf(const AHIO* io) {
+    return {io->physIn, io->virt1In, io->virt2In, io->physOut, io->virt1Out, io->virt2Out};
+}
+
+int ah_io_route_allowed(AHIO* io, int input, int output) {
+    if (!io) return 0;
+    return audiohub::routeAllowed(input, output, layoutOf(io)) ? 1 : 0;
+}
+
+void ah_io_channel_owner(AHIO* io, int output, int channel, int* owner, int* local) {
+    if (owner) *owner = -1;
+    if (local) *local = 0;
+    if (!io) return;
+    audiohub::ChannelLayout L = layoutOf(io);
+    int phys = output ? L.physOut : L.physIn;
+    int v1 = output ? L.virt1Out : L.virt1In;
+    int v2 = output ? L.virt2Out : L.virt2In;
+    if (channel < 0 || channel >= phys + v1 + v2) return;
+    int o = audiohub::channelOwner(channel, phys, v1);
+    if (owner) *owner = o;
+    if (local) *local = o == 0 ? channel + 1 : (o == 1 ? channel - phys + 1 : channel - phys - v1 + 1);
+}
+
 int ah_io_set_route(AHIO* io, int input, int output, int enabled, float sendDb) {
     if (!io) return -1;
-    if (input >= io->physIn && output >= io->physOut) return -1;  // virtual → virtual ditolak
+    // Virtual → virtual ditolak jika dari perangkat virtual yang sama (akan membentuk loop di driver)
+    if (!audiohub::routeAllowed(input, output, layoutOf(io))) return -1;
     ah_engine_set_route(io->engine, input, output, enabled, sendDb);
     return 0;
 }

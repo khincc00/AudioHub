@@ -1,6 +1,6 @@
 #!/bin/sh
 # Membangun AudioHub-0.2.0.dmg: paket instalasi untuk aplikasi, dibungkus DMG.
-# Aplikasi masuk ke /Applications. Perangkat virtual (mis. EMEET Virtual Audio) dipasang terpisah oleh vendornya.
+# Aplikasi masuk ke /Applications. Perangkat virtual (mis. perangkat virtual) dipasang terpisah oleh vendornya.
 # Ditandatangani Developer ID. Notarisasi dilakukan terpisah (lihat docs/release/checklist.md).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

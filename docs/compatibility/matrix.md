@@ -11,7 +11,7 @@ Dua status dipisah sesuai prinsip produk:
 | Maono ProStudio 2x2 (PS22) | Mono | Ya | Tidak | Kedua kanal berisi sinyal yang sama. Tidak didukung untuk routing per kanal. |
 | AudioHub Virtual (driver sendiri) | Stereo, buffer 192 | Ya | Ya, sebagian | Loopback 16,08 ms setelah perbaikan lag. Receive dan send lulus. Core Audio melaporkan buffer 192 dengan rentang 15–192; penyebab di HAL belum diketahui. |
 | AudioHub Virtual 2 (driver sendiri) | Stereo | Belum (perlu pasang ulang) | Belum | Uji offline lulus. Belum diuji di mesin dengan driver terpasang. |
-| EMEET Virtual Audio | Stereo | Ya | Ya, sebagian | Dipakai sebagai virtual cable pembanding saat driver sendiri belum ada. Tidak dipakai lagi untuk produk. |
+| perangkat virtual | Stereo | Ya | Ya, sebagian | Dipakai sebagai virtual cable pembanding saat driver sendiri belum ada. Tidak dipakai lagi untuk produk. |
 | MacBook Air mic dan speaker | Built-in | Ya | Tidak | Tidak diuji. |
 
 Aplikasi yang sudah diuji: `say` (sistem) lewat default output ke AudioHub Virtual. Aplikasi musik, panggilan, dan OBS belum diuji.
