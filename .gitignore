@@ -9,3 +9,6 @@ DerivedData/
 # Status Xcode pribadi per pengguna
 xcuserdata/
 *.xcuserstate
+
+# Driver pihak ketiga (EMEET): lisensi distribusi belum diperiksa, jangan di-commit
+Driver/EMEET Driver/
