@@ -17,9 +17,29 @@ namespace {
 
 constexpr int kMaxCh = 8;
 constexpr int kMaxFrames = 4096;
+// Buffer yang harus sama di semua sub-device agregat. PS22 dan EMEET Virtual Audio berjalan di 512 frame.
+// Jika agregat (mis. 192) tidak cocok dengan sub-device (512), HAL menyisipkan klik periodik saat ada klien kedua.
+constexpr UInt32 kPreferredBufferFrames = 512;
 
 AudioObjectPropertyAddress addr(AudioObjectPropertySelector sel, AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
     return {sel, scope, kAudioObjectPropertyElementMain};
+}
+
+void setBufferFrames(AudioObjectID dev, UInt32 frames) {
+    auto a = addr(kAudioDevicePropertyBufferFrameSize);
+    AudioObjectSetPropertyData(dev, &a, 0, nullptr, sizeof frames, &frames);
+}
+
+// Perangkat dari UID; kAudioObjectUnknown jika tidak ditemukan.
+AudioObjectID deviceForUID(const char* uid) {
+    if (!uid || !uid[0]) return kAudioObjectUnknown;
+    auto a = addr(kAudioHardwarePropertyTranslateUIDToDevice);
+    CFStringRef cf = CFStringCreateWithCString(nullptr, uid, kCFStringEncodingUTF8);
+    AudioObjectID dev = kAudioObjectUnknown;
+    UInt32 sz = sizeof dev;
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, sizeof cf, &cf, &sz, &dev);
+    CFRelease(cf);
+    return dev;
 }
 
 std::string nameOf(AudioObjectID id) {
@@ -167,11 +187,14 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
         const void* vals[] = {uid, drift ? kCFBooleanTrue : kCFBooleanFalse};
         return CFDictionaryCreate(nullptr, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     };
+    // Clock master = perangkat virtual (EMEET), supaya clock agregat tidak mengikuti PS22.
+    // PS22 tetap sub-device pertama agar urutan kanal tidak berubah,
+    // dengan drift compensation karena clock-nya tidak lagi menjadi master.
     CFMutableArrayRef subList = CFArrayCreateMutable(nullptr, 3, &kCFTypeArrayCallBacks);
-    CFDictionaryRef ps = makeSub(masterUID, false);
+    CFDictionaryRef ps = makeSub(masterUID, true);
     CFArrayAppendValue(subList, ps);
     CFStringRef vUID1 = CFStringCreateWithCString(nullptr, virtualUID1, kCFStringEncodingUTF8);
-    CFDictionaryRef vd1 = makeSub(vUID1, true);
+    CFDictionaryRef vd1 = makeSub(vUID1, false);
     CFArrayAppendValue(subList, vd1);
     CFStringRef vUID2 = nullptr;
     CFDictionaryRef vd2 = nullptr;
@@ -183,7 +206,7 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
     CFArrayRef subs = subList;
     const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master")};
     CFStringRef aggUID = CFSTR("com.audiohub.app.aggregate");
-    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanTrue, subs, masterUID};
+    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanTrue, subs, vUID1};
     CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     AudioObjectID agg = kAudioObjectUnknown;
     OSStatus st = AudioHardwareCreateAggregateDevice(desc, &agg);
@@ -205,6 +228,7 @@ AHIO* ah_io_open(const char* deviceNameContains, char* errBuf, int errLen) {
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Perangkat tidak ditemukan");
         return nullptr;
     }
+    setBufferFrames(dev, kPreferredBufferFrames);
     return openDevice(dev, kAudioObjectUnknown, errBuf, errLen);
 }
 
@@ -224,6 +248,12 @@ AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtu
         return nullptr;
     }
     usleep(800000);  // beri waktu HAL menerbitkan aggregate
+    // Semua sub-device harus memakai buffer yang sama sebelum IO dimulai, termasuk perangkat virtual.
+    // Jika tidak, agregat berjalan di 192 sementara sub-device tetap 512, dan HAL menyisipkan klik.
+    setBufferFrames(master, kPreferredBufferFrames);
+    setBufferFrames(deviceForUID(virtualUID1), kPreferredBufferFrames);
+    if (virtualUID2 && virtualUID2[0]) setBufferFrames(deviceForUID(virtualUID2), kPreferredBufferFrames);
+    setBufferFrames(agg, kPreferredBufferFrames);
     AHIO* io = openDevice(agg, agg, errBuf, errLen);
     if (io) {
         // Kanal fisik = kanal master; sisanya dari sub-device virtual

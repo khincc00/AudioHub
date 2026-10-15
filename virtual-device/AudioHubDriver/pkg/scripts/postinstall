@@ -1,4 +1,0 @@
-#!/bin/sh
-# Setelah pemasangan: muat ulang Core Audio supaya perangkat AudioHub Virtual muncul.
-killall coreaudiod 2>/dev/null || true
-exit 0

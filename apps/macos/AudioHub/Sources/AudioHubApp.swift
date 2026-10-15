@@ -223,8 +223,7 @@ struct ContentView: View {
             .frame(width: 230)
 
             Menu {
-                Toggle("AudioHub Virtual", isOn: $engine.useVirtual)
-                Toggle("AudioHub Virtual 2", isOn: $engine.useVirtual2)
+                Toggle("EMEET Virtual Audio", isOn: $engine.useVirtual)
             } label: {
                 Label(virtualSummary, systemImage: "rectangle.connected.to.line.below")
             }
@@ -717,7 +716,6 @@ struct DevicePanel: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle("Latensi loopback terukur")
-                row("AudioHub Virtual, buffer 192", "16 ms")
                 row("PS22, buffer 512", "29 ms")
                 Text("Hasil tes loopback sebelumnya, bukan pengukuran sesi ini.")
                     .font(.caption2).foregroundStyle(.secondary)

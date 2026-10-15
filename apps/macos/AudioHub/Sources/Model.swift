@@ -236,8 +236,8 @@ final class Meters: ObservableObject {
 final class EngineController: ObservableObject {
     let meters = Meters()
     @Published var deviceName = "Maono ProStudio 2x2"
-    @Published var useVirtual = true      // AudioHub Virtual
-    @Published var useVirtual2 = false    // AudioHub Virtual 2
+    @Published var useVirtual = true      // EMEET Virtual Audio
+    @Published var useVirtual2 = false    // tidak dipakai (driver AudioHub Virtual sudah dihapus)
     @Published var autoReconnect: Bool = UserDefaults.standard.bool(forKey: "autoReconnect") {
         didSet { UserDefaults.standard.set(autoReconnect, forKey: "autoReconnect") }
     }
@@ -267,7 +267,7 @@ final class EngineController: ObservableObject {
     @Published var recordingOutput: Int? = nil
     @Published var recordedFile = ""
 
-    let virtualUID = "com.audiohub.virtual.device"
+    let virtualUID = "EMEET_VirtualAudio_UID"
     let virtualUID2 = "com.audiohub.virtual.device2"
 
     private var io: OpaquePointer?

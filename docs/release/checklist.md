@@ -7,12 +7,12 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [x] Engine (`engine/graph`, `engine/api`) lulus 20 uji unit (`sh tests/unit/run.sh`).
 - [x] Backend CoreAudio (`backends/coreaudio/io`) dibangun dan lulus smoke test.
 - [x] Aplikasi SwiftUI (`apps/macos/AudioHub`) dibangun menjadi bundel `.app` dengan izin mikrofon di `Info.plist`.
-- [x] Driver virtual (`virtual-device/AudioHubDriver`) dibangun dan dipasang di mesin uji.
-- [x] Paket instalasi driver (`AudioHub-Virtual-0.1.pkg`) dibangun dan ditandatangani Developer ID Installer (`scripts/build_dmg.sh`).
-- [x] Tanda tangan developer ID untuk aplikasi dan driver (build Release dari `AudioHub.xcodeproj`, Hardened Runtime, timestamp).
+- [x] Driver virtual AudioHub (`virtual-device/AudioHubDriver`) dibangun dan diuji offline. Driver ini tidak lagi dipakai dan source-nya dihapus dari folder kerja (tersedia di riwayat git).
+- [x] Installer DMG (`scripts/build_dmg.sh`) berisi aplikasi saja dan ditandatangani Developer ID. Driver tidak ikut dipaket.
+- [x] Tanda tangan developer ID untuk aplikasi (build Release dari `AudioHub.xcodeproj`, Hardened Runtime, timestamp).
 - [ ] Notarisasi Apple. Butuh akun developer Anda.
 - [ ] Uji instalasi paket di mesin bersih, termasuk uninstall.
-- [ ] Pemasangan ulang driver dengan dua perangkat (AudioHub Virtual dan AudioHub Virtual 2) di mesin uji. Uji offline sudah lulus.
+- [~] Pemasangan ulang driver dengan dua perangkat: dibatalkan. Driver AudioHub sudah tidak dipakai; jalur virtual memakai EMEET Virtual Audio.
 
 ## Fungsi
 
@@ -31,7 +31,7 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 ## Stabilitas
 
 - [x] Tes 60 detik dan 30 menit pada PS22 (spike passthrough), 0 dropout.
-- [ ] Endurance 30 menit lewat aggregate dengan AudioHub Virtual (sedang berjalan, lihat log).
+- [ ] Endurance 30 menit lewat aggregate dengan EMEET Virtual Audio (belum dijalankan setelah perubahan ke buffer 512).
 - [ ] Endurance 8 jam (kriteria blueprint). Belum dijalankan.
 
 ## Yang belum dikerjakan
@@ -49,9 +49,17 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [ ] Ramp gain per sampel (sekarang per blok).
 - [x] Jalur clock driver tanpa lock; ring disentuh dan dikunci saat driver dimuat (`a86af75`, `d032b9b`). Diuji offline.
 - [x] Ukuran buffer driver mengikuti HAL (16-1024), timeline sejalan dengan blok IO (`a86af75`). Tes ring 192 dan 512 lulus offline.
-- [ ] Pasang ulang driver dari DMG terbaru (driver lama di sistem belum memuat perbaikan ini), lalu cek ukuran buffer yang dilaporkan.
+- [~] Pemasangan ulang driver dari DMG: dibatalkan, driver sudah tidak dipaket.
 - [ ] Uji audio langsung: kresek tidak terdengar selama sesi live, dan dashboard dropout tetap nol.
 - [ ] Pembacaan input yang terlambat masih diisi nol. Ukur seberapa sering terjadi saat uji live.
 - [ ] Graph view dan editor bus di aplikasi (sekarang hanya matriks langsung).
 - [ ] Diagnostik dan ekspor laporan.
 - [ ] Tahap 7: multi-device luas, DSP, plugin.
+
+## Yang belum selesai setelah perbaikan klik dan klip
+
+- [ ] Rekaman REAPER dengan suara bicara pada jalur EMEET 512 (belum direkam ulang setelah perbaikan).
+- [ ] Aplikasi masih bergantung pada EMEET Virtual Audio (UID `EMEET_VirtualAudio_UID`). Pilihan perangkat virtual umum belum dikerjakan.
+- [ ] Lisensi driver EMEET Virtual Audio untuk distribusi belum diperiksa. Driver itu tidak disertakan di DMG.
+- [ ] Penyebab lonjakan CPU coreaudiod yang kadang tinggi belum diketahui.
+- [ ] Penyebab bundle `/Applications/AudioHub.app` pernah hilang belum diketahui.
