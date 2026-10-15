@@ -1,5 +1,29 @@
 import SwiftUI
 
+// Tema tampilan: ikuti macOS (default), terang, atau gelap. Disimpan di UserDefaults.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "Sistem"
+        case .light: return "Terang"
+        case .dark: return "Gelap"
+        }
+    }
+
+    // nil = ikuti pengaturan macOS
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 // MARK: - Gaya
 
 // Palet dan ukuran dipusatkan di sini. Warna aksen sendiri, tidak memakai identitas merek lain.
@@ -7,9 +31,9 @@ enum Style {
     static let accent = Color(red: 0.30, green: 0.82, blue: 0.74)
     static let warning = Color(red: 0.98, green: 0.72, blue: 0.30)
     static let danger = Color(red: 0.95, green: 0.35, blue: 0.35)
-    static let surface = Color.white.opacity(0.045)
-    static let surfaceStrong = Color.white.opacity(0.08)
-    static let hairline = Color.white.opacity(0.08)
+    static let surface = Color.primary.opacity(0.045)
+    static let surfaceStrong = Color.primary.opacity(0.08)
+    static let hairline = Color.primary.opacity(0.08)
     static let muted = Color.secondary
     static let channelColors: [Color] = [
         Color(red: 0.30, green: 0.82, blue: 0.74),
@@ -124,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct AudioHubApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var engine = EngineController()
+    @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
 
     // Mode snapshot: `AudioHub --snapshot /path/file.png` merender tampilan ke PNG lalu keluar.
     private var snapshotPath: String? {
@@ -138,7 +163,7 @@ struct AudioHubApp: App {
                 .environmentObject(engine)
                 .environmentObject(engine.meters)
                 .frame(minWidth: 1120, minHeight: 720)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(AppearanceMode(rawValue: appearance)?.colorScheme)
                 .onAppear {
                     if let path = snapshotPath {
                         engine.open()
@@ -171,6 +196,7 @@ func writeSnapshot(engine: EngineController, path: String) {
 // MARK: - Jendela utama
 
 struct ContentView: View {
+    @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
     @EnvironmentObject var engine: EngineController
     @State private var showGraph = false
     @State private var rightTab = 0
@@ -260,6 +286,12 @@ struct ContentView: View {
 
             Menu {
                 Toggle("Sambung ulang otomatis", isOn: $engine.autoReconnect)
+                Divider()
+                Picker("Tampilan", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.label).tag(mode.rawValue)
+                    }
+                }
                 Divider()
                 Button("Perbarui daftar perangkat") { engine.refreshDevices() }
             } label: {
