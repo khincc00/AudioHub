@@ -1,6 +1,6 @@
 #!/bin/sh
-# Membangun AudioHub-0.1.dmg: satu paket instalasi untuk aplikasi dan driver, dibungkus DMG.
-# Aplikasi masuk ke /Applications, driver ke /Library/Audio/Plug-Ins/HAL.
+# Membangun AudioHub-0.1.dmg: paket instalasi untuk aplikasi, dibungkus DMG.
+# Aplikasi masuk ke /Applications. Perangkat virtual (mis. EMEET Virtual Audio) dipasang terpisah oleh vendornya.
 # Ditandatangani Developer ID. Notarisasi dilakukan terpisah (lihat docs/release/checklist.md).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,13 +16,12 @@ INSTALLER_ID="${INSTALLER_ID:-Developer ID Installer: taufiq sholikhin (MYQ2H766
 rm -rf "$BUILD" "$DMG"
 mkdir -p "$BUILD"
 
-xcodebuild -project "$ROOT/AudioHub.xcodeproj" -target AudioHub -target AudioHubDriver \
+xcodebuild -project "$ROOT/AudioHub.xcodeproj" -target AudioHub \
     -configuration Release CONFIGURATION_BUILD_DIR="$PRODUCTS" build >/dev/null
 
 # Susun root paket sesuai lokasi pemasangan
-mkdir -p "$STAGE/Applications" "$STAGE/Library/Audio/Plug-Ins/HAL"
+mkdir -p "$STAGE/Applications"
 ditto --norsrc --noextattr --noacl "$PRODUCTS/AudioHub.app" "$STAGE/Applications/AudioHub.app"
-ditto --norsrc --noextattr --noacl "$PRODUCTS/AudioHub.driver" "$STAGE/Library/Audio/Plug-Ins/HAL/AudioHub.driver"
 # pkgbuild mengubah xattr (mis. com.apple.provenance) menjadi file ._* di payload, jadi hapus dulu
 xattr -cr "$STAGE"
 find "$STAGE" -name "._*" -delete
@@ -47,7 +46,6 @@ pkgbuild --root "$STAGE" \
     --version 0.1 \
     --install-location / \
     --ownership recommended \
-    --scripts "$ROOT/virtual-device/AudioHubDriver/pkg/scripts" \
     --sign "$INSTALLER_ID" \
     "$PKG"
 
