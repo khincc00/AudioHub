@@ -1,18 +1,223 @@
+PERJANJIAN LISENSI PENGGUNA AKHIR
+AudioHub dan Driver Perangkat Virtual AVHub v2
+Versi Perangkat Lunak: 0.3.0
+Versi Dokumen Lisensi: 1.0
+Tanggal Berlaku: 18 Oktober 2026
+
 Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi.
-Situs: khincreator.com
 
-Perangkat lunak AudioHub (termasuk kode sumber, dokumentasi, dan aset) serta driver perangkat virtual AVHub v2 (`virtual-device/AVHubDriver/`) adalah milik pembuatnya dan dilindungi undang-undang hak cipta. Tidak ada lisensi yang diberikan secara implisit.
+Situs resmi: audiohub.khincreator.com
 
-Anda boleh:
-- Menggunakan salinan AudioHub yang Anda peroleh secara sah, sesuai syarat penggunaan yang berlaku.
+Perjanjian Lisensi Pengguna Akhir ini (“Perjanjian”) mengatur penggunaan aplikasi AudioHub dan driver perangkat virtual AVHub v2.
 
-Anda tidak boleh, kecuali diizinkan secara tertulis:
-- Menyalin, memodifikasi, mendistribusikan ulang, atau menjual AudioHub atau bagiannya.
-- Membongkar (reverse engineer), mendekompilasi, atau melewati mekanisme lisensi.
-- Menghapus atau mengubah pemberitahuan hak cipta dan merek.
+Perjanjian ini dibuat antara taufiq sholikhin sebagai pemberi lisensi (“Pembuat”) dan orang perseorangan atau badan hukum yang menerima lisensi (“Anda”).
 
-Paket instalasi AudioHub hanya memuat aplikasi AudioHub dan driver perangkat virtual AVHub v2 yang dibawanya. Tidak ada komponen pihak ketiga di dalamnya.
+Baca Perjanjian ini sebelum menyetujui pemasangan atau penggunaan Perangkat Lunak. Jika Anda tidak menyetujui ketentuannya, jangan melanjutkan pemasangan atau penggunaan.
 
-Nama produk pihak lain (mis. OBS, TikTok) disebut hanya untuk menunjukkan kompatibilitas. Nama dan merek itu bukan milik pembuat AudioHub.
+1. DEFINISI
 
-PERANGKAT LUNAK INI DISEDIAKAN "APA ADANYA", TANPA JAMINAN APA PUN, TERSURAT MAUPUN TERSIRAT.
+1.1 “Perangkat Lunak” berarti aplikasi AudioHub, driver perangkat virtual AVHub v2 yang menyediakan perangkat avhub_virtual1 dan avhub_virtual2, serta installer, uninstaller apabila disediakan, dokumentasi, dan berkas pendukung yang disertakan Pembuat dalam Paket Resmi.
+
+1.2 “Paket Resmi” berarti paket distribusi Perangkat Lunak, termasuk berkas DMG atau installer, yang diterbitkan oleh Pembuat melalui Situs Resmi atau repositori GitHub resmi yang ditautkan dari Situs Resmi.
+
+1.3 “Situs Resmi” berarti audiohub.khincreator.com.
+
+1.4 “Komputer yang Anda Kuasai” berarti komputer Mac yang Anda miliki atau yang secara sah Anda berwenang gunakan dan kelola.
+
+1.5 “Komponen Pihak Ketiga” berarti perangkat lunak, pustaka, kode, aset, atau komponen lain yang haknya dimiliki pihak selain Pembuat dan yang, apabila ada, disertakan dalam Paket Resmi.
+
+2. PENERIMAAN PERJANJIAN
+
+2.1 Anda menerima Perjanjian ini dengan memilih tombol atau kotak persetujuan yang disediakan dalam installer atau aplikasi setelah memperoleh kesempatan untuk membaca Perjanjian ini.
+
+2.2 Jika Anda menerima Perjanjian atas nama badan hukum, Anda menyatakan memiliki kewenangan untuk mengikat badan hukum tersebut. Dalam keadaan itu, istilah “Anda” merujuk pada badan hukum tersebut.
+
+2.3 Jika Anda tidak setuju, batalkan pemasangan dan jangan gunakan Perangkat Lunak. Apabila Perangkat Lunak telah terpasang, hentikan penggunaannya dan lakukan pencopotan sesuai dokumentasi.
+
+2.4 Apabila Perangkat Lunak diperoleh melalui transaksi berbayar, ketidaksetujuan terhadap Perjanjian ini tidak dengan sendirinya menghapus hak pengembalian pembayaran atau hak lain yang diberikan oleh ketentuan transaksi dan hukum yang berlaku.
+
+3. PEMBERIAN DAN RUANG LINGKUP LISENSI
+
+3.1 Dengan tunduk pada Perjanjian ini, Pembuat memberikan kepada Anda lisensi terbatas, tidak eksklusif, tidak dapat dialihkan, dan tidak dapat disublisensikan untuk memasang dan menggunakan Perangkat Lunak pada Komputer yang Anda Kuasai.
+
+3.2 Penggunaan yang diizinkan mencakup:
+
+a. penggunaan pribadi; dan
+b. penggunaan untuk kegiatan operasional atau produksi usaha Anda sendiri, termasuk perekaman, penyiaran, siaran langsung, rapat, dan pembuatan konten, sepanjang Perangkat Lunak tidak didistribusikan atau dilisensikan kembali kepada pihak lain.
+
+3.3 Penggunaan Perangkat Lunak dalam kegiatan usaha sebagaimana dimaksud pada Pasal 3.2 tidak memberikan hak untuk menjual, menyewakan, mengemas ulang, atau menyediakan salinan Perangkat Lunak kepada pelanggan atau pihak lain.
+
+3.4 Anda boleh membuat salinan yang secara teknis diperlukan untuk pemasangan dan penggunaan yang diizinkan serta satu salinan cadangan Paket Resmi untuk keperluan Anda sendiri. Ketentuan ini tidak mengurangi hak penggandaan atau adaptasi yang diberikan oleh hukum yang berlaku.
+
+3.5 Lisensi berlaku sejak Perjanjian diterima sampai diakhiri sesuai Pasal 10.
+
+3.6 Seluruh hak yang tidak secara tegas diberikan dalam Perjanjian ini tetap berada pada Pembuat atau pemegang hak terkait.
+
+4. PEMBATASAN PENGGUNAAN
+
+4.1 Kecuali diizinkan dalam Perjanjian ini, memperoleh izin tertulis dari Pembuat, atau diperbolehkan oleh hukum yang berlaku, Anda tidak boleh:
+
+a. menggandakan, memodifikasi, menerjemahkan, atau membuat karya turunan dari Perangkat Lunak;
+
+b. menggabungkan atau menyematkan Perangkat Lunak, seluruh atau sebagian, ke dalam produk atau paket distribusi lain;
+
+c. mendistribusikan ulang, menjual, menyewakan, meminjamkan salinan, mengalihkan lisensi, atau mensublisensikan Perangkat Lunak kepada pihak lain;
+
+d. mengekstrak driver untuk didistribusikan secara terpisah dari Paket Resmi atau untuk dikemas bersama produk lain;
+
+e. melakukan rekayasa balik, dekompilasi, atau pembongkaran kode mesin (disassembly);
+
+f. menghapus, menyamarkan, atau mengubah pemberitahuan hak cipta, merek, atribusi, atau lisensi;
+
+g. menghindari, menonaktifkan, atau merusak mekanisme perlindungan lisensi atau pembatasan penggunaan, apabila tersedia; atau
+
+h. menggunakan Perangkat Lunak untuk kegiatan yang melanggar hukum atau hak pihak ketiga.
+
+4.2 Pembatasan pada Pasal 4.1 tidak berlaku sejauh bertentangan dengan hak atau pengecualian yang diberikan oleh hukum dan tidak dapat dikesampingkan melalui perjanjian.
+
+4.3 Penggunaan driver bersama aplikasi audio lain melalui antarmuka audio standar macOS tidak dengan sendirinya merupakan penggabungan atau distribusi ulang yang dilarang dalam Pasal ini.
+
+4.4 Pengaturan biasa melalui fitur aplikasi atau konfigurasi yang didokumentasikan Pembuat tidak dianggap sebagai modifikasi Perangkat Lunak yang dilarang.
+
+5. KEPEMILIKAN DAN HASIL PENGGUNAAN
+
+5.1 Hak atas Perangkat Lunak tetap berada pada Pembuat, kecuali hak atas Komponen Pihak Ketiga yang tetap berada pada pemiliknya masing-masing.
+
+5.2 Perangkat Lunak dilisensikan, bukan dijual. Perjanjian ini tidak mengalihkan kepemilikan hak cipta, merek, atau hak kekayaan intelektual lain kepada Anda.
+
+5.3 Perjanjian ini tidak memberikan hak kepada Anda untuk menggunakan nama, logo, atau merek Pembuat seolah-olah Anda merupakan pihak resmi, mitra, atau pihak yang memperoleh dukungan dari Pembuat.
+
+5.4 Pembuat tidak memperoleh hak kepemilikan atas rekaman, siaran, atau konten Anda semata-mata karena konten tersebut dibuat atau diproses menggunakan Perangkat Lunak.
+
+5.5 Anda tetap bertanggung jawab untuk memperoleh izin atas musik, rekaman, suara, dan materi lain yang digunakan melalui Perangkat Lunak.
+
+6. KOMPONEN PIHAK KETIGA DAN MEREK
+
+6.1 Apabila Paket Resmi menyertakan Komponen Pihak Ketiga, informasi mengenai komponen tersebut, pemberitahuan hak cipta, dan ketentuan lisensinya dicantumkan dalam dokumentasi atau berkas pemberitahuan yang menyertai Paket Resmi.
+
+6.2 Ketentuan lisensi Komponen Pihak Ketiga berlaku terhadap komponen terkait. Jika terdapat pertentangan dengan Perjanjian ini, ketentuan lisensi pihak ketiga berlaku sejauh mengenai komponen tersebut.
+
+6.3 Penggunaan teknologi, antarmuka, atau perangkat pengembangan Apple oleh Pembuat tidak memberikan kepada Anda hak atas SDK atau materi milik Apple selain hak yang secara sah Anda peroleh berdasarkan ketentuan Apple yang berlaku.
+
+6.4 Penyebutan Apple, macOS, OBS, TikTok, Maono, atau nama produk dan merek pihak lain hanya bertujuan untuk identifikasi atau penjelasan kompatibilitas. Penyebutan tersebut tidak menyatakan adanya afiliasi, dukungan, atau persetujuan dari pemilik merek.
+
+6.5 Perangkat keras, aplikasi, platform, dan layanan pihak ketiga yang digunakan bersama Perangkat Lunak tetap tunduk pada ketentuan masing-masing.
+
+7. PEMASANGAN, IZIN SISTEM, DAN PENCOPOTAN
+
+7.1 Sesuai paket dan versi yang dipasang, proses pemasangan dapat mencakup:
+
+a. penempatan aplikasi di direktori /Applications;
+b. penempatan driver di direktori /Library/Audio/Plug-Ins/HAL; dan
+c. pemuatan ulang layanan audio macOS, termasuk coreaudiod, apabila diperlukan.
+
+7.2 Tindakan yang memerlukan hak administrator harus dilakukan melalui mekanisme otorisasi sistem atau persetujuan pemasangan yang sesuai. Perjanjian ini tidak memberikan kewenangan kepada Pembuat untuk mengakses komputer Anda di luar tindakan yang diperlukan dan diotorisasi untuk pemasangan, penggunaan, pembaruan, atau pencopotan.
+
+7.3 Pemasangan, pembaruan, pencopotan, atau pengoperasian driver dapat memengaruhi layanan audio macOS dan aplikasi yang sedang menggunakannya, termasuk menyebabkan gangguan audio sementara atau perubahan perangkat audio yang tersedia.
+
+7.4 Sebelum pemasangan, pembaruan, atau pencopotan, Anda dianjurkan menyimpan pekerjaan, menghentikan sesi audio yang penting, dan membuat cadangan data yang relevan.
+
+7.5 Sebelum menggunakan Perangkat Lunak untuk siaran langsung, rekaman penting, atau panggilan, lakukan pengujian pada konfigurasi perangkat keras, aplikasi, dan versi macOS yang akan digunakan.
+
+7.6 Untuk mencopot Perangkat Lunak, ikuti dokumentasi pencopotan yang sesuai dengan versi terpasang atau gunakan uninstaller resmi apabila tersedia. Penghapusan manual harus dibatasi pada berkas milik Perangkat Lunak yang secara jelas diidentifikasi dalam dokumentasi.
+
+7.7 Peringatan dan anjuran dalam Pasal ini tidak menghapus kewajiban Pembuat atau hak Anda yang tetap berlaku berdasarkan hukum.
+
+8. DATA DAN PRIVASI
+
+8.1 Perjanjian ini mengatur lisensi penggunaan Perangkat Lunak dan bukan merupakan persetujuan umum atas pengumpulan, penggunaan, atau pengiriman data pribadi maupun isi audio Anda kepada Pembuat.
+
+8.2 Apabila Perangkat Lunak memproses data pribadi, mengirim laporan diagnostik, atau menggunakan layanan daring, informasi mengenai pemrosesan tersebut harus dijelaskan melalui pemberitahuan atau kebijakan privasi yang sesuai dengan fungsi sebenarnya.
+
+8.3 Persetujuan tambahan, apabila diwajibkan oleh hukum, harus diperoleh melalui mekanisme yang sesuai dan tidak dianggap telah diberikan hanya karena Anda menerima Perjanjian ini.
+
+9. PEMBARUAN, PERUBAHAN KETENTUAN, DAN DUKUNGAN
+
+9.1 Pembuat dapat menyediakan pembaruan, perbaikan, atau versi baru Perangkat Lunak.
+
+9.2 Kecuali telah dijanjikan secara tegas atau diwajibkan oleh hukum, lisensi ini tidak mencakup kewajiban untuk menyediakan dukungan teknis, pembaruan berkelanjutan, atau kompatibilitas dengan versi macOS dan produk pihak ketiga yang dirilis kemudian.
+
+9.3 Pembaruan tunduk pada Perjanjian ini, kecuali Pembuat menawarkan perjanjian pengganti yang disampaikan kepada Anda untuk memperoleh persetujuan sebelum pembaruan tersebut dipasang atau digunakan.
+
+9.4 Perubahan Perjanjian yang dipublikasikan di Situs Resmi tidak dengan sendirinya mengubah ketentuan yang berlaku atas salinan yang telah Anda peroleh berdasarkan versi Perjanjian sebelumnya.
+
+9.5 Penghentian penyediaan unduhan atau dukungan tidak dengan sendirinya mengakhiri lisensi Anda atas salinan yang telah diperoleh secara sah.
+
+10. PENGAKHIRAN LISENSI
+
+10.1 Anda dapat mengakhiri lisensi setiap saat dengan menghentikan penggunaan dan menghapus seluruh salinan Perangkat Lunak yang berada dalam penguasaan Anda.
+
+10.2 Pembuat dapat mengakhiri lisensi apabila Anda melakukan pelanggaran material terhadap Perjanjian ini.
+
+10.3 Untuk pelanggaran yang dapat diperbaiki, Pembuat terlebih dahulu memberikan pemberitahuan tertulis yang menjelaskan pelanggaran dan kesempatan selama 14 hari kalender sejak pemberitahuan diterima untuk memperbaikinya.
+
+10.4 Untuk pelanggaran material yang tidak dapat diperbaiki, atau apabila pelanggaran tidak diperbaiki dalam jangka waktu tersebut, Pembuat dapat mengakhiri lisensi melalui pemberitahuan tertulis.
+
+10.5 Setelah lisensi berakhir, Anda wajib menghentikan penggunaan dan menghapus salinan Perangkat Lunak, termasuk salinan cadangan, sejauh diwajibkan oleh hukum. Berkas rekaman atau konten Anda sendiri tidak wajib dihapus semata-mata karena lisensi berakhir.
+
+10.6 Pengakhiran tidak menghapus hak, kewajiban, atau tuntutan yang telah timbul sebelumnya. Ketentuan yang menurut sifatnya tetap diperlukan setelah pengakhiran, termasuk mengenai kepemilikan, pembatasan distribusi, tanggung jawab, dan penyelesaian sengketa, tetap berlaku sejauh relevan.
+
+11. JAMINAN DAN BATASAN TEKNIS
+
+11.1 Sejauh diperbolehkan oleh hukum, dan kecuali untuk jaminan yang secara tegas diberikan oleh Pembuat, Perangkat Lunak disediakan “apa adanya” dan “sebagaimana tersedia”.
+
+11.2 Pembuat tidak memberikan jaminan tambahan bahwa Perangkat Lunak:
+
+a. bebas dari seluruh kesalahan atau gangguan;
+b. selalu tersedia atau bekerja tanpa interupsi;
+c. kompatibel dengan setiap perangkat keras, aplikasi, layanan, atau versi macOS; atau
+d. memenuhi kebutuhan khusus yang tidak secara tegas disepakati.
+
+11.3 Informasi kompatibilitas harus dibaca sesuai versi Perangkat Lunak, konfigurasi, serta batas pengujian yang dijelaskan dalam dokumentasi terkait.
+
+11.4 Tidak ada ketentuan dalam Pasal ini yang menghapus jaminan, kewajiban, atau upaya pemulihan yang tidak dapat dikesampingkan berdasarkan hukum yang berlaku.
+
+12. TANGGUNG JAWAB
+
+12.1 Tanggung jawab masing-masing pihak ditentukan berdasarkan Perjanjian ini dan hukum yang berlaku.
+
+12.2 Sejauh sah menurut hukum, Pembuat tidak bertanggung jawab atas kerugian tidak langsung atau konsekuensial, termasuk kehilangan keuntungan atau kesempatan bisnis, yang timbul dari penggunaan atau ketidakmampuan menggunakan Perangkat Lunak.
+
+12.3 Pembatasan pada Pasal 12.2 tidak berlaku terhadap:
+
+a. penipuan atau perbuatan yang disengaja oleh Pembuat;
+b. pelanggaran kewajiban hukum yang tanggung jawabnya tidak dapat dibatasi melalui perjanjian; atau
+c. hak atas ganti rugi dan upaya pemulihan konsumen yang tidak dapat dikesampingkan.
+
+12.4 Pemberian Perangkat Lunak tanpa biaya tidak dengan sendirinya menghapus tanggung jawab yang diwajibkan oleh hukum.
+
+12.5 Tidak ada ketentuan dalam Perjanjian ini yang dimaksudkan untuk mengalihkan kepada Anda tanggung jawab hukum Pembuat yang tidak boleh dialihkan.
+
+13. HUKUM YANG BERLAKU DAN PENYELESAIAN SENGKETA
+
+13.1 Perjanjian ini diatur oleh hukum Republik Indonesia, tanpa mengurangi ketentuan hukum wajib lain yang berlaku dan tidak dapat dikesampingkan melalui perjanjian.
+
+13.2 Para pihak terlebih dahulu mengupayakan penyelesaian sengketa melalui musyawarah dengan itikad baik selama paling lama 30 hari kalender sejak pemberitahuan sengketa diterima oleh pihak lainnya.
+
+13.3 Apabila sengketa tidak terselesaikan, penyelesaian dilakukan melalui pengadilan atau mekanisme penyelesaian sengketa yang berwenang berdasarkan hukum yang berlaku.
+
+13.4 Pasal ini tidak membatasi hak konsumen untuk menggunakan mekanisme penyelesaian sengketa konsumen atau forum yang tersedia berdasarkan hukum.
+
+13.5 Upaya musyawarah tidak menghalangi tindakan hukum mendesak atau tindakan yang diperlukan untuk menjaga hak sebelum berakhirnya tenggat hukum.
+
+14. KETENTUAN UMUM
+
+14.1 Perjanjian ini, bersama ketentuan tambahan yang secara tegas disepakati, merupakan kesepakatan mengenai lisensi Perangkat Lunak. Perjanjian ini tidak menghapus hak berdasarkan informasi penawaran, jaminan, atau ketentuan transaksi yang mengikat menurut hukum.
+
+14.2 Jika suatu ketentuan dinyatakan tidak sah atau tidak dapat dilaksanakan, ketentuan tersebut tidak berlaku sejauh ketidakabsahannya, tanpa memengaruhi ketentuan lain yang masih dapat dilaksanakan.
+
+14.3 Keterlambatan atau kegagalan salah satu pihak untuk menegakkan suatu ketentuan tidak dengan sendirinya merupakan pelepasan hak.
+
+14.4 Ketentuan khusus mengenai dukungan, penggunaan tambahan, atau izin distribusi hanya berlaku apabila disepakati secara tertulis oleh pihak yang berwenang.
+
+14.5 Jika tersedia terjemahan, versi Bahasa Indonesia menjadi rujukan apabila terdapat perbedaan penafsiran, sejauh diperbolehkan oleh hukum yang berlaku.
+
+15. IDENTITAS DAN KONTAK
+
+Pemberi lisensi: taufiq sholikhin
+Situs resmi: audiohub.khincreator.com
+Email lisensi dan pengaduan: master@khincreator.com
+
+15.1 Pertanyaan lisensi, permohonan izin tambahan, pengaduan, dan pemberitahuan sengketa dapat disampaikan melalui kontak di atas.
+
+15.2 Pemberitahuan pelanggaran atau pengakhiran kepada Anda disampaikan melalui kontak yang secara sah tersedia bagi Pembuat atau mekanisme pemberitahuan lain yang dapat dibuktikan penerimaannya.

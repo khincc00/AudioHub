@@ -60,6 +60,6 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 
 - [ ] Rekaman REAPER dengan suara bicara pada jalur virtual 512 (belum direkam ulang setelah perbaikan).
 - [x] Aplikasi tidak lagi terikat ke satu vendor. Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang (transport virtual dari Core Audio). Pengujian sebelumnya memakai perangkat virtual pihak lain; pengujian dengan AVHub v2 yang ikut dipasang belum dilakukan.
-- [ ] Lisensi driver perangkat virtual untuk distribusi belum diperiksa. Driver AVHub v2 sekarang ikut di DMG dan tercakup oleh `LICENSE` (hak cipta penuh, khincreator.com).
+- [ ] Lisensi driver perangkat virtual untuk distribusi belum diperiksa. Driver AVHub v2 sekarang ikut di DMG dan tercakup oleh `LICENSE` (hak cipta penuh, audiohub.khincreator.com).
 - [ ] Penyebab lonjakan CPU coreaudiod yang kadang tinggi belum diketahui.
 - [ ] Penyebab bundle `/Applications/AudioHub.app` pernah hilang belum diketahui.

@@ -149,6 +149,6 @@ Yang **belum** diuji: pemasangan ke `/Library/Audio/Plug-Ins/HAL/` dan pemuatan 
 
 ## Lisensi
 
-Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi. Situs: khincreator.com
+Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi. Situs: audiohub.khincreator.com
 
 Driver ini tercakup oleh lisensi lengkap di berkas [LICENSE](LICENSE) pada folder ini, yang sama dengan lisensi AudioHub.

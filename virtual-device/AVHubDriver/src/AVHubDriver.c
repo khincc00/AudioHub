@@ -1,4 +1,4 @@
-// Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi. Situs: khincreator.com
+// Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi. Situs: audiohub.khincreator.com
 // Lisensi lengkap ada di berkas LICENSE pada folder ini.
 //
 // Driver audio virtual AVHub v2: dua perangkat loopback stereo.
