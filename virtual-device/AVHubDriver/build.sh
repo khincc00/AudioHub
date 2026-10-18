@@ -14,6 +14,7 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$ROOT/src/Info.plist" "$BUNDLE/Contents/Info.plist"
 # Lisensi lengkap ikut ke dalam bundel, jadi tetap ada setelah driver dipasang
 cp "$ROOT/LICENSE" "$BUNDLE/Contents/Resources/LICENSE"
+chmod 644 "$BUNDLE/Contents/Resources/LICENSE"
 
 clang -bundle -arch x86_64 -arch arm64 -mmacosx-version-min=11.0 -O2 \
   -Wall -Wextra -Wno-unused-parameter -fvisibility=default \
