@@ -1,0 +1,84 @@
+# Sumber proyek Xcode untuk AudioHub Studio. Hasilkan dengan: xcodegen generate --spec AudioHubStudio.yml
+# Terpisah dari project.yml (AudioHub) agar proyek AudioHub tidak berubah.
+# Model.swift dan engine/backend dipakai bersama dengan AudioHub.
+name: AudioHubStudio
+
+options:
+  bundleIdPrefix: com.audiohub
+  deploymentTarget:
+    macOS: "13.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: MYQ2H766UX
+    CODE_SIGN_STYLE: Manual
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    CLANG_ENABLE_OBJC_ARC: YES
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_VERSION: "5.0"
+
+targets:
+  AudioHubStudio:
+    type: application
+    platform: macOS
+    sources:
+      # UI dan Model bersama dengan AudioHub (AudioHubApp.swift, Model.swift). Entry point Studio ada di sini juga.
+      - path: apps/macos/AudioHub/Sources
+      - path: apps/macos/AudioHub/Assets.xcassets
+      - path: apps/macos/AudioHubStudio/Sources
+      - path: engine/graph/graph.cpp
+      - path: engine/graph/graph.h
+      - path: engine/api/audiohub_engine.cpp
+      - path: engine/api/audiohub_engine.h
+      - path: engine/dsp/dsp.cpp
+      - path: engine/dsp/dsp.h
+      - path: engine/fx/fx_rules.cpp
+      - path: engine/fx/fx_rules.h
+      - path: backends/coreaudio/io/audiohub_io.cpp
+      - path: backends/coreaudio/io/audiohub_io.h
+      - path: backends/coreaudio/io/au_insert.cpp
+      - path: backends/coreaudio/io/au_insert.h
+      - path: backends/coreaudio/io/route_policy.h
+    settings:
+      base:
+        PRODUCT_NAME: AudioHub Studio
+        PRODUCT_BUNDLE_IDENTIFIER: com.audiohub.studio
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Melewati @main AudioHubApp dan memakai entry point StudioApp.swift
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) AUDIOHUB_STUDIO
+        INFOPLIST_FILE: apps/macos/AudioHubStudio/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: apps/macos/AudioHubStudio/AudioHubStudio.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: apps/macos/AudioHubStudio/Sources/AudioHubStudio-Bridging.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/engine/api
+          - $(SRCROOT)/engine/dsp
+          - $(SRCROOT)/engine/graph
+          - $(SRCROOT)/engine/fx
+          - $(SRCROOT)/backends/coreaudio/io
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/backends/coreaudio/io
+        OTHER_LDFLAGS: "-lc++"
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+      configs:
+        Release:
+          OTHER_CODE_SIGN_FLAGS: "--timestamp"
+        Debug:
+          CODE_SIGN_IDENTITY: "Apple Development"
+          CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: AppKit.framework
+      - sdk: CoreAudio.framework
+      - sdk: CoreFoundation.framework
+      - sdk: AudioToolbox.framework
+
+schemes:
+  AudioHubStudio:
+    shared: true
+    build:
+      targets:
+        AudioHubStudio: all
+    run:
+      config: Debug
+    archive:
+      config: Release

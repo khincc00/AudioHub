@@ -1,0 +1,9 @@
+{
+  "id" : "cc5aee35-285f-4f4f-9a3c-a1202c7f0550",
+  "targets" : [
+    {
+      "id" : "5f349ac5-7104-47c7-a8a9-2deb9c285930",
+      "name" : "AudioHubStudio"
+    }
+  ]
+}
