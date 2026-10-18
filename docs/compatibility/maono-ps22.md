@@ -13,8 +13,9 @@ Perangkat ini dipakai sebagai interface fisik referensi untuk Tahap 0. AudioHub 
 | UID Core Audio | `AppleUSBAudioEngine:Maono ProStudio 2x2:Maono ProStudio 2x2:100000:1,2` |
 | AudioObjectID (sesi ini) | 106 (berubah antar-sesi, jangan dipakai sebagai identifier) |
 | Koneksi | USB |
-| Driver | TODO (class-compliant atau driver khusus) |
-| Sample rate saat ini | 48 kHz |
+| Driver | Core Audio memakai `AppleUSBAudioEngine` (engine USB audio bawaan macOS). Tidak perlu driver khusus untuk fungsi dasar. |
+| USB VID / PID | `0x352F` / `0x0002` (dikonfirmasi dari `ioreg` dan `MaonoProStudio2x2.inf`, entri "Maono ProStudio 2x2") |
+| Sample rate saat ini | 48 kHz (dapat dipilih di menu pengaturan, lihat bagian Format) |
 | Sebagai output sistem | Ya, saat ini default system output |
 | Mode USB yang diuji | Stereo (saklar di panel perangkat, gain di posisi tengah) |
 
@@ -109,9 +110,32 @@ Latensi end-to-end belum bisa diukur dari tes ini. Pengukuran yang sah membutuhk
 
 | Parameter | Nilai yang didukung | Nilai yang diuji |
 |---|---|---|
-| Sample rate | TODO | 48 kHz (target MVP) |
-| Bit depth | TODO | TODO (probe mengasumsikan float32 dan memeriksa ukuran buffer) |
-| Buffer size | TODO | 512 (default saat ini); 64, 128, 256 belum diuji |
+| Sample rate | 44,1 / 48 / 88,2 / 96 / 176,4 / 192 kHz (dilaporkan perangkat: `kAudioDevicePropertyAvailableNominalSampleRates`) | 48 kHz (default), 96 kHz (uji buka dan jalan 3 detik) |
+| Bit depth | Input 24-bit, output 16-bit pada format fisik saat ini. Keduanya tersedia dalam 16 dan 24-bit (`kAudioStreamPropertyAvailablePhysicalFormats`). | 24-bit input dan 16-bit output, dibaca dari perangkat |
+| Buffer size | 14–4096 frame (dilaporkan perangkat) | 512 (default), 128 (uji buka dan jalan 3 detik, 1 dropout) |
+
+Sumber untuk tabel ini: `tests/integration/probe/` ditambah probe `caps` di luar repo. Rate dan buffer sudah bisa dipilih dari menu pengaturan di aplikasi dan diuji lewat `pref_test` (buka, jalan, kembalikan default).
+
+### Kontrol hardware
+
+Perangkat mengekspos volume dan mute per kanal output (elemen 1 dan 2, dan master di elemen 0) serta per kanal input. Uji buka dan mute: mute output 1 diset ke 1, dibaca balik 1, lalu dikembalikan ke 0 dengan volume tetap 1,0.
+
+Aplikasi sekarang menampilkan kontrol volume dan mute per output di panel perangkat. Perubahan ini mengubah gain di perangkat, bukan gain software engine.
+
+### Latensi perangkat
+
+Latensi input dan output dari properti perangkat (latency + safety offset) adalah 28 frame per sisi pada 48 kHz, sekitar 0,58 ms. Ini belum latensi end-to-end.
+
+### Peta kanal dari driver Windows (INF)
+
+Driver Windows mendefinisikan profil berikut untuk PS22. Ini hanya referensi untuk penamaan, bukan bukti perilaku macOS.
+
+| Profil | Kanal (nama di driver) |
+|---|---|
+| Input fisik | MIC In 1, MIC In 2 |
+| Input virtual | VC In 1–4, Loopback 1–2 |
+| Output fisik | HP Out 1, HP Out 2 |
+| Output virtual | VC Out 1–4, Loopback 1–2 |
 
 ## Status kompatibilitas
 

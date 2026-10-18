@@ -11,6 +11,8 @@ extern "C" {
 typedef struct AHEngine AHEngine;
 
 AHEngine* ah_engine_create(int inputs, int outputs, int maxFrames);
+// Sama seperti di atas, dengan sample rate. Koefisien DSP (gate, EQ, kompresor, limiter, delay) mengikuti rate ini.
+AHEngine* ah_engine_create_rate(int inputs, int outputs, int maxFrames, double sampleRate);
 void ah_engine_destroy(AHEngine* engine);
 
 // Aman dipanggil dari thread UI. Route dinonaktifkan secara default.

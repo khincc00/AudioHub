@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace audiohub {
 
@@ -117,6 +118,70 @@ void processInsert(AUInsert& slot, float* buf, int frames) {
     slot.ts.mSampleTime += frames;
     AudioUnitRender(slot.au, &flags, &slot.ts, 0, (UInt32)frames, &abl);
     slot.source = nullptr;
+}
+
+int paramCount(const AUInsert& slot) {
+    if (!slot.au) return 0;
+    UInt32 size = 0;
+    if (AudioUnitGetPropertyInfo(slot.au, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &size, nullptr) != noErr) return 0;
+    return (int)(size / sizeof(AudioUnitParameterID));
+}
+
+bool paramInfo(const AUInsert& slot, int index, ParamInfo& out) {
+    int n = paramCount(slot);
+    if (index < 0 || index >= n) return false;
+    std::vector<AudioUnitParameterID> ids((size_t)n);
+    UInt32 size = (UInt32)(n * sizeof(AudioUnitParameterID));
+    if (AudioUnitGetProperty(slot.au, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, ids.data(), &size) != noErr) return false;
+
+    AudioUnitParameterInfo info{};
+    UInt32 infoSize = sizeof info;
+    if (AudioUnitGetProperty(slot.au, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, ids[index], &info, &infoSize) != noErr) return false;
+
+    out = ParamInfo{};
+    out.id = ids[index];
+    if ((info.flags & kAudioUnitParameterFlag_HasCFNameString) && info.cfNameString) {
+        CFStringGetCString(info.cfNameString, out.name, sizeof out.name, kCFStringEncodingUTF8);
+        if (info.flags & kAudioUnitParameterFlag_CFNameRelease) CFRelease(info.cfNameString);
+    } else {
+        std::snprintf(out.name, sizeof out.name, "%s", info.name);
+    }
+    out.minValue = info.minValue;
+    out.maxValue = info.maxValue;
+    out.defaultValue = info.defaultValue;
+    AudioUnitGetParameter(slot.au, out.id, kAudioUnitScope_Global, 0, &out.value);
+    return true;
+}
+
+bool setParamValue(AUInsert& slot, unsigned int id, float value) {
+    if (!slot.au) return false;
+    return AudioUnitSetParameter(slot.au, id, kAudioUnitScope_Global, 0, value, 0) == noErr;
+}
+
+int getClassInfo(const AUInsert& slot, unsigned char* buf, int len) {
+    if (!slot.au) return -1;
+    CFPropertyListRef plist = nullptr;
+    UInt32 size = sizeof plist;
+    if (AudioUnitGetProperty(slot.au, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, &size) != noErr || !plist) return -1;
+    CFDataRef data = CFPropertyListCreateData(kCFAllocatorDefault, plist, kCFPropertyListBinaryFormat_v1_0, 0, nullptr);
+    CFRelease(plist);
+    if (!data) return -1;
+    int n = (int)CFDataGetLength(data);
+    if (buf && len >= n) std::memcpy(buf, CFDataGetBytePtr(data), (size_t)n);
+    CFRelease(data);
+    return n;
+}
+
+bool setClassInfo(AUInsert& slot, const unsigned char* data, int len) {
+    if (!slot.au || !data || len <= 0) return false;
+    CFDataRef cfData = CFDataCreate(kCFAllocatorDefault, data, len);
+    if (!cfData) return false;
+    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, cfData, kCFPropertyListImmutable, nullptr, nullptr);
+    CFRelease(cfData);
+    if (!plist) return false;
+    OSStatus st = AudioUnitSetProperty(slot.au, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, sizeof plist);
+    CFRelease(plist);
+    return st == noErr;
 }
 
 }  // namespace audiohub

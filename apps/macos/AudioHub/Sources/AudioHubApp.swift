@@ -140,11 +140,34 @@ struct ToggleChip: View {
 // MARK: - App
 
 // Aplikasi tetap berjalan saat jendela ditutup, sehingga engine tidak ikut berhenti.
+// Penghubung ke editor rantai FX per track. Diisi oleh AudioHub Studio; di AudioHub nilainya nil,
+// sehingga tombol FX dan tab plugin lama tetap seperti semula.
+struct FxChainHost {
+    // Membuka editor rantai untuk input tertentu.
+    let open: (Int) -> Void
+    // Jumlah FX yang terpasang di input tertentu (untuk ikon).
+    let count: (Int) -> Int
+}
+
+private struct FxChainHostKey: EnvironmentKey {
+    static let defaultValue: FxChainHost? = nil
+}
+
+extension EnvironmentValues {
+    var fxChainHost: FxChainHost? {
+        get { self[FxChainHostKey.self] }
+        set { self[FxChainHostKey.self] = newValue }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
+// Di AudioHub Studio, entry point ada di StudioApp.swift (kondisi AUDIOHUB_STUDIO).
+#if !AUDIOHUB_STUDIO
 @main
+#endif
 struct AudioHubApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var engine = EngineController()
@@ -287,6 +310,18 @@ struct ContentView: View {
 
             Menu {
                 Toggle("Sambung ulang otomatis", isOn: $engine.autoReconnect)
+                Divider()
+                Picker("Sample rate", selection: $engine.prefSampleRate) {
+                    ForEach(engine.supportedRates, id: \.self) { rate in
+                        Text(String(format: "%.1f kHz", rate / 1000)).tag(rate)
+                    }
+                }
+                Picker("Buffer", selection: $engine.prefBuffer) {
+                    ForEach(engine.bufferChoices, id: \.self) { frames in
+                        let ms = Double(frames) / engine.prefSampleRate * 1000
+                        Text(String(format: "%u frame (%.1f ms)", frames, ms)).tag(frames)
+                    }
+                }
                 Divider()
                 Picker("Tampilan", selection: $appearance) {
                     ForEach(AppearanceMode.allCases) { mode in
@@ -492,6 +527,7 @@ struct ContentView: View {
 struct InputRow: View {
     let index: Int
     @EnvironmentObject var engine: EngineController
+    @Environment(\.fxChainHost) private var fxChainHost
 
     var body: some View {
         let pair = index / 2
@@ -533,6 +569,15 @@ struct InputRow: View {
                 ToggleChip(label: "M", on: engine.mutes[index], tint: Style.danger,
                            help: "Bisukan kanal") { engine.setMute(index, !engine.mutes[index]) }
                 DynamicsButton(index: index)
+                if let host = fxChainHost {
+                    let count = host.count(index)
+                    Button { host.open(index) } label: {
+                        Image(systemName: count > 0 ? "waveform.path.ecg.rectangle.fill" : "waveform.path.ecg.rectangle")
+                            .foregroundStyle(count > 0 ? Style.accent : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Rantai FX (Audio Unit) per track")
+                }
             }
 
             HStack(spacing: 8) {
@@ -659,6 +704,8 @@ struct RouteCell: View {
 struct PresetPanel: View {
     @EnvironmentObject var engine: EngineController
     @State private var newName = ""
+    @State private var overwriteCandidate: String?
+    @State private var confirmDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -674,8 +721,13 @@ struct PresetPanel: View {
                 HStack {
                     Button("Muat") { engine.loadPreset(engine.currentPreset) }
                         .disabled(engine.currentPreset.isEmpty)
-                    Button("Hapus", role: .destructive) { engine.deletePreset(engine.currentPreset) }
+                    Button("Hapus", role: .destructive) { confirmDelete = true }
                         .disabled(engine.currentPreset.isEmpty)
+                        .confirmationDialog("Hapus preset \"\(engine.currentPreset)\"?",
+                                            isPresented: $confirmDelete, titleVisibility: .visible) {
+                            Button("Hapus", role: .destructive) { engine.deletePreset(engine.currentPreset) }
+                            Button("Batal", role: .cancel) {}
+                        }
                     Spacer()
                 }
             }
@@ -688,10 +740,28 @@ struct PresetPanel: View {
                     TextField("Nama preset", text: $newName)
                         .textFieldStyle(.roundedBorder)
                     Button("Simpan") {
-                        engine.savePreset(named: newName)
-                        newName = ""
+                        if engine.presetExists(newName) {
+                            overwriteCandidate = newName
+                        } else {
+                            engine.savePreset(named: newName)
+                            newName = ""
+                        }
                     }
-                    .disabled(!engine.isOpen || newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(!engine.isOpen || engine.presetNameProblem(newName) != nil)
+                    .confirmationDialog("Timpa preset \"\(overwriteCandidate ?? "")\"?",
+                                        isPresented: Binding(get: { overwriteCandidate != nil },
+                                                             set: { if !$0 { overwriteCandidate = nil } }),
+                                        titleVisibility: .visible) {
+                        Button("Timpa", role: .destructive) {
+                            engine.savePreset(named: overwriteCandidate ?? "")
+                            overwriteCandidate = nil
+                            newName = ""
+                        }
+                        Button("Batal", role: .cancel) { overwriteCandidate = nil }
+                    }
+                }
+                if !newName.trimmingCharacters(in: .whitespaces).isEmpty, let problem = engine.presetNameProblem(newName) {
+                    Text(problem).font(.caption2).foregroundStyle(Style.danger)
                 }
             }
 
@@ -722,6 +792,12 @@ struct PresetPanel: View {
             .frame(maxWidth: .infinity)
             .disabled(!engine.isOpen)
     }
+}
+
+// Latensi dalam ms dari jumlah frame dan sample rate yang sedang aktif.
+func latencyText(_ frames: UInt32, _ rate: Double) -> String {
+    guard frames > 0, rate > 0 else { return "—" }
+    return String(format: "%.1f ms", Double(frames) / rate * 1000)
 }
 
 struct DevicePanel: View {
@@ -756,12 +832,31 @@ struct DevicePanel: View {
                 SectionTitle("Parameter audio")
                 row("Sample rate", meters.sampleRate > 0 ? String(format: "%.0f Hz", meters.sampleRate) : "—")
                 row("Buffer", meters.bufferFrames > 0 ? "\(meters.bufferFrames) frame" : "—")
-                row("Buffer", meters.bufferFrames > 0 && meters.sampleRate > 0
-                    ? String(format: "%.1f ms", Double(meters.bufferFrames) / meters.sampleRate * 1000) : "—")
+                row("Latensi buffer", latencyText(meters.bufferFrames, meters.sampleRate))
+                row("Latensi input perangkat", latencyText(meters.inputLatencyFrames, meters.sampleRate))
+                row("Latensi output perangkat", latencyText(meters.outputLatencyFrames, meters.sampleRate))
                 row("Dropout", "\(meters.dropouts)")
             }
 
             Divider()
+
+            if !engine.hwVolume.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionTitle("Kontrol perangkat")
+                    ForEach(engine.hwVolume.indices, id: \.self) { j in
+                        HStack(spacing: 8) {
+                            Text("Output \(j + 1)").font(.caption).frame(width: 60, alignment: .leading)
+                            Slider(value: Binding(get: { Double(engine.hwVolume[j]) },
+                                                  set: { engine.setHwVolume(output: j, Float($0)) }), in: 0...1)
+                            Toggle("Bisukan", isOn: Binding(get: { engine.hwMute[j] },
+                                                            set: { engine.setHwMute(output: j, $0) }))
+                                .toggleStyle(.checkbox)
+                                .font(.caption)
+                        }
+                    }
+                }
+                Divider()
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle("Latensi loopback terukur")
@@ -900,6 +995,7 @@ struct DynamicsButton: View {
 struct InputDynamicsView: View {
     let index: Int
     @EnvironmentObject var engine: EngineController
+    @Environment(\.fxChainHost) private var fxChainHost
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -971,13 +1067,20 @@ struct InputDynamicsView: View {
 
     private var pluginTab: some View {
         Form {
-            Picker("Audio Unit", selection: Binding(get: { f.insert },
-                set: { engine.setInsert(index, $0) })) {
-                Text("Tanpa plugin").tag("")
-                ForEach(engine.effectNames, id: \.self) { Text($0).tag($0) }
+            if let host = fxChainHost {
+                // Di Studio, plugin dikelola lewat rantai FX (beberapa plugin per track).
+                Button("Buka Rantai FX…") { host.open(index) }
+                Text("Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Picker("Audio Unit", selection: Binding(get: { f.insert },
+                    set: { engine.setInsert(index, $0) })) {
+                    Text("Tanpa plugin").tag("")
+                    ForEach(engine.effectNames, id: \.self) { Text($0).tag($0) }
+                }
+                Text("Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi.")
-                .font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }

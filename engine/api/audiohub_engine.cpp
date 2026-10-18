@@ -42,12 +42,21 @@ struct AHEngine {
     std::vector<audiohub::Limiter> lims;
     std::vector<std::vector<float>> scratch;   // salinan input untuk diproses insert
     int maxFrames = 0;
+    float fs = 48000.0f;                       // sample rate untuk koefisien DSP
 };
 
+// Delay line dialokasikan untuk rate tertinggi yang didukung perangkat, supaya ganti rate tidak perlu alokasi.
+constexpr int kMaxDelaySamples = 192000 + 16;   // 1 detik pada 192 kHz
+
 AHEngine* ah_engine_create(int inputs, int outputs, int maxFrames) {
+    return ah_engine_create_rate(inputs, outputs, maxFrames, 48000.0);
+}
+
+AHEngine* ah_engine_create_rate(int inputs, int outputs, int maxFrames, double sampleRate) {
     AHEngine* e = new AHEngine();
     e->nIn = inputs;
     e->nOut = outputs;
+    e->fs = (float)sampleRate;
     for (int i = 0; i < inputs; i++) e->graph.addChannel("in-" + std::to_string(i + 1));
     for (int j = 0; j < outputs; j++) e->graph.addOutput("out-" + std::to_string(j + 1));
     int routes = inputs * outputs;
@@ -82,7 +91,7 @@ AHEngine* ah_engine_create(int inputs, int outputs, int maxFrames) {
     e->actPan.assign(inputs, 0.0f);
     e->pendDelay.resize(inputs);
     e->actDelay.resize(inputs);
-    for (int i = 0; i < inputs; i++) e->delays[i].allocate(48000 + 16);   // 1 detik maksimum
+    for (int i = 0; i < inputs; i++) e->delays[i].allocate(kMaxDelaySamples);
     e->lims.resize(outputs);
     for (int j = 0; j < outputs; j++) e->lims[j].allocate();
     e->scratch.assign(inputs, std::vector<float>(maxFrames, 0.0f));
@@ -200,7 +209,7 @@ void ah_engine_set_output_limiter(AHEngine* e, int output, const AHLimiterParams
 static void applyFxIfChanged(AHEngine* e) {
     std::unique_lock<std::mutex> lock(e->fxMutex, std::try_to_lock);
     if (!lock.owns_lock() || !e->fxDirty) return;
-    float fs = 48000.0f;
+    float fs = e->fs;
     for (int i = 0; i < e->nIn; i++) {
         e->actGate[i] = e->pendGate[i];
         e->actEq[i] = e->pendEq[i];

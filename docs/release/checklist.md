@@ -8,7 +8,7 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 - [x] Backend CoreAudio (`backends/coreaudio/io`) dibangun dan lulus smoke test.
 - [x] Aplikasi SwiftUI (`apps/macos/AudioHub`) dibangun menjadi bundel `.app` dengan izin mikrofon di `Info.plist`.
 - [x] Driver virtual AudioHub (`virtual-device/AudioHubDriver`) dibangun dan diuji offline. Driver ini tidak lagi dipakai dan source-nya dihapus dari folder kerja (tersedia di riwayat git).
-- [x] Installer DMG (`scripts/build_dmg.sh`) berisi aplikasi saja dan ditandatangani Developer ID. Driver tidak ikut dipaket.
+- [x] Installer DMG (`scripts/build_dmg.sh`) berisi aplikasi dan driver AVHub v2 (`virtual-device/AVHubDriver`) dalam satu paket, ditandatangani Developer ID. Driver dipasang ke `/Library/Audio/Plug-Ins/HAL`, lalu `coreaudiod` dimuat ulang lewat postinstall.
 - [x] Tanda tangan developer ID untuk aplikasi (build Release dari `AudioHub.xcodeproj`, Hardened Runtime, timestamp).
 - [ ] Notarisasi Apple. Butuh akun developer Anda.
 - [ ] Uji instalasi paket di mesin bersih, termasuk uninstall.
@@ -59,7 +59,7 @@ Status tiap item ditandai jujur. Item yang belum selesai belum boleh diklaim seb
 ## Yang belum selesai setelah perbaikan klik dan klip
 
 - [ ] Rekaman REAPER dengan suara bicara pada jalur virtual 512 (belum direkam ulang setelah perbaikan).
-- [x] Aplikasi tidak lagi terikat ke satu vendor. Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang (transport virtual dari Core Audio). Diuji dengan perangkat virtual vendor dan BlackHole 2ch; VB-Cable belum diuji sebagai agregat.
-- [ ] Lisensi driver perangkat virtual untuk distribusi belum diperiksa. Driver itu tidak disertakan di DMG.
+- [x] Aplikasi tidak lagi terikat ke satu vendor. Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang (transport virtual dari Core Audio). Pengujian sebelumnya memakai perangkat virtual pihak lain; pengujian dengan AVHub v2 yang ikut dipasang belum dilakukan.
+- [ ] Lisensi driver perangkat virtual untuk distribusi belum diperiksa. Driver AVHub v2 sekarang ikut di DMG dan tercakup oleh `LICENSE` (hak cipta penuh, khincreator.com).
 - [ ] Penyebab lonjakan CPU coreaudiod yang kadang tinggi belum diketahui.
 - [ ] Penyebab bundle `/Applications/AudioHub.app` pernah hilang belum diketahui.

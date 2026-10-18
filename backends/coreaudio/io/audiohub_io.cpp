@@ -6,6 +6,7 @@
 
 #include <CoreAudio/CoreAudio.h>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -17,6 +18,7 @@
 namespace {
 
 constexpr int kMaxCh = 8;
+constexpr int kMaxFx = AH_FX_SLOTS;
 constexpr int kMaxFrames = 4096;
 // Buffer yang harus sama di semua sub-device agregat. PS22 dan perangkat virtual berjalan di 512 frame.
 // Jika agregat (mis. 192) tidak cocok dengan sub-device (512), HAL menyisipkan klik periodik saat ada klien kedua.
@@ -29,9 +31,91 @@ AudioObjectPropertyAddress addr(AudioObjectPropertySelector sel, AudioObjectProp
     return {sel, scope, kAudioObjectPropertyElementMain};
 }
 
-void setBufferFrames(AudioObjectID dev, UInt32 frames) {
+// Pilihan dari UI. Dibaca saat perangkat dibuka; ah_io_set_preferences yang menulisnya.
+UInt32 gPrefBufferFrames = kPreferredBufferFrames;
+double gPrefSampleRate = 0;   // 0 = pakai sample rate yang sudah dipasang di perangkat
+
+// Latensi perangkat (properti latency + safety offset) dalam frame, per sisi.
+uint32_t deviceLatency(AudioObjectID dev, AudioObjectPropertyScope scope) {
+    uint32_t total = 0;
+    for (AudioObjectPropertySelector sel : {kAudioDevicePropertyLatency, kAudioDevicePropertySafetyOffset}) {
+        auto a = addr(sel, scope);
+        UInt32 v = 0, sz = sizeof v;
+        if (dev != kAudioObjectUnknown && AudioObjectGetPropertyData(dev, &a, 0, nullptr, &sz, &v) == noErr) total += v;
+    }
+    return total;
+}
+
+OSStatus setBufferFrames(AudioObjectID dev, UInt32 frames) {
     auto a = addr(kAudioDevicePropertyBufferFrameSize);
-    AudioObjectSetPropertyData(dev, &a, 0, nullptr, sizeof frames, &frames);
+    return AudioObjectSetPropertyData(dev, &a, 0, nullptr, sizeof frames, &frames);
+}
+
+// Daftar sample rate nominal yang didukung perangkat. Mengembalikan jumlah rate yang ditulis.
+int supportedRates(AudioObjectID dev, double* rates, int maxRates) {
+    auto a = addr(kAudioDevicePropertyAvailableNominalSampleRates);
+    UInt32 size = 0;
+    if (dev == kAudioObjectUnknown || AudioObjectGetPropertyDataSize(dev, &a, 0, nullptr, &size) != noErr || size == 0) return 0;
+    std::unique_ptr<AudioValueRange[]> ranges(new AudioValueRange[size / sizeof(AudioValueRange)]);
+    if (AudioObjectGetPropertyData(dev, &a, 0, nullptr, &size, ranges.get()) != noErr) return 0;
+    int n = 0;
+    for (UInt32 i = 0; i < size / sizeof(AudioValueRange); i++) {
+        // Rentang biasanya satu titik (min = max). Rate diskret dimasukkan satu per satu.
+        if (ranges[i].mMinimum == ranges[i].mMaximum && n < maxRates && rates) rates[n++] = ranges[i].mMinimum;
+    }
+    return n;
+}
+
+bool supportsRate(AudioObjectID dev, double rate) {
+    auto a = addr(kAudioDevicePropertyAvailableNominalSampleRates);
+    UInt32 size = 0;
+    if (dev == kAudioObjectUnknown || AudioObjectGetPropertyDataSize(dev, &a, 0, nullptr, &size) != noErr || size == 0) return false;
+    std::unique_ptr<AudioValueRange[]> ranges(new AudioValueRange[size / sizeof(AudioValueRange)]);
+    if (AudioObjectGetPropertyData(dev, &a, 0, nullptr, &size, ranges.get()) != noErr) return false;
+    for (UInt32 i = 0; i < size / sizeof(AudioValueRange); i++) {
+        if (rate >= ranges[i].mMinimum - 0.5 && rate <= ranges[i].mMaximum + 0.5) return true;
+    }
+    return false;
+}
+
+// Memasang sample rate di perangkat. rate <= 0 tidak mengubah apa pun. Gagal jika perangkat tidak mendukung rate itu.
+bool applyRate(AudioObjectID dev, double rate, char* errBuf, int errLen) {
+    if (rate <= 0) return true;
+    if (dev == kAudioObjectUnknown) {
+        if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Perangkat tidak ditemukan untuk mengatur sample rate");
+        return false;
+    }
+    if (!supportsRate(dev, rate)) {
+        if (errBuf && errLen > 0) snprintf(errBuf, errLen, "Perangkat tidak mendukung %.0f Hz", rate);
+        return false;
+    }
+    auto a = addr(kAudioDevicePropertyNominalSampleRate);
+    Float64 want = rate;
+    OSStatus st = AudioObjectSetPropertyData(dev, &a, 0, nullptr, sizeof want, &want);
+    if (st != noErr) {
+        if (errBuf && errLen > 0) snprintf(errBuf, errLen, "Gagal mengatur sample rate %.0f Hz (OSStatus %d)", rate, (int)st);
+        return false;
+    }
+    // Perubahan rate berlaku secara asinkron. Tunggu sampai perangkat melaporkan rate baru, maksimal 2 detik.
+    for (int i = 0; i < 40; i++) {
+        Float64 now = 0;
+        UInt32 sz = sizeof now;
+        if (AudioObjectGetPropertyData(dev, &a, 0, nullptr, &sz, &now) == noErr && std::fabs(now - rate) < 0.5) return true;
+        usleep(50000);
+    }
+    if (errBuf && errLen > 0) snprintf(errBuf, errLen, "Perangkat tidak berpindah ke %.0f Hz", rate);
+    return false;
+}
+
+// Rentang buffer yang dilaporkan perangkat. False jika properti tidak tersedia.
+bool bufferRangeOf(AudioObjectID dev, UInt32* lo, UInt32* hi) {
+    auto a = addr(kAudioDevicePropertyBufferFrameSizeRange);
+    AudioValueRange r{};
+    UInt32 sz = sizeof r;
+    if (dev == kAudioObjectUnknown || AudioObjectGetPropertyData(dev, &a, 0, nullptr, &sz, &r) != noErr) return false;
+    *lo = (UInt32)r.mMinimum;
+    *hi = (UInt32)r.mMaximum;
+    return true;
 }
 
 // Perangkat dari UID; kAudioObjectUnknown jika tidak ditemukan.
@@ -81,6 +165,9 @@ struct AHIO {
     int virt1In = 0, virt1Out = 0, virt2In = 0, virt2Out = 0;
     uint32_t bufferFrames = 0;
     double sampleRate = 0;
+    // Perangkat fisik utama (bukan agregat). Dipakai untuk latensi dan kontrol hardware.
+    AudioObjectID master = kAudioObjectUnknown;
+    uint32_t inLatency = 0, outLatency = 0;   // latensi perangkat dalam frame (latency + safety offset)
 
     // Buffer deinterleave, dialokasikan sekali di open
     float inDeint[kMaxCh][kMaxFrames];
@@ -93,7 +180,11 @@ struct AHIO {
     uint32_t lastFrames = 0;
     bool started = false;
     std::atomic<bool> running{false};
-    audiohub::AUInsert insert[kMaxCh];
+    // Rantai FX: insert[input][slot]. fxOrder[input][k] = slot yang diproses ke-k.
+    // fxOn = 0 melewati slot. Urutan dan fxOn dibaca di jalur audio, diubah dari UI (atomic).
+    audiohub::AUInsert insert[kMaxCh][kMaxFx];
+    std::atomic<bool> fxOn[kMaxCh][kMaxFx];
+    std::atomic<int> fxOrder[kMaxCh][kMaxFx];
 
     // Perekam: ring SPSC (penulis = IO callback, pembaca = thread penulisan berkas)
     static constexpr uint32_t kRecCap = 1u << 19;
@@ -137,9 +228,13 @@ static OSStatus ioProc(AudioObjectID, const AudioTimeStamp*,
     }
     for (int i = g; i < io->nIn; i++) std::memset(io->inDeint[i], 0, sizeof(float) * frames);
 
-    // Insert Audio Unit per input, sebelum engine
+    // Rantai FX per input, sebelum engine: berurutan sesuai fxOrder, hanya slot berisi AU yang aktif
     for (int i = 0; i < io->nIn; i++) {
-        if (io->insert[i].au) audiohub::processInsert(io->insert[i], io->inDeint[i], (int)frames);
+        for (int k = 0; k < kMaxFx; k++) {
+            int s = io->fxOrder[i][k].load(std::memory_order_relaxed);
+            if (io->fxOn[i][s].load(std::memory_order_relaxed) && io->insert[i][s].au)
+                audiohub::processInsert(io->insert[i][s], io->inDeint[i], (int)frames);
+        }
     }
 
     ah_engine_process(io->engine, io->inPtr, io->outPtr, (int)frames);
@@ -234,9 +329,11 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
     // Agregat terlihat (private = false) agar DAW bisa memilihnya. UID lama dengan nama yang sama sudah
     // dihapus di destroyStaleAggregates, karena HAL menolak membuat UID yang sudah ada (kAudioHardwareIllegalOperationError).
     CFStringRef aggUID = CFStringCreateWithCString(nullptr, kAggregateUID, kCFStringEncodingUTF8);
-    const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master")};
-    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanFalse, subs, vUID1};
-    CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    // "master" saja tidak cukup: Core Audio memilih clock dari perangkat fisik jika "clock" tidak diset.
+    // "clock" mengendalikan time base agregat (AudioHardware.h), jadi diset eksplisit ke virtual 1.
+    const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master"), CFSTR("clock")};
+    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanFalse, subs, vUID1, vUID1};
+    CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 6, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     AudioObjectID agg = kAudioObjectUnknown;
     OSStatus st = AudioHardwareCreateAggregateDevice(desc, &agg);
     CFRelease(desc);
@@ -258,7 +355,8 @@ AHIO* ah_io_open(const char* deviceNameContains, char* errBuf, int errLen) {
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Perangkat tidak ditemukan");
         return nullptr;
     }
-    setBufferFrames(dev, kPreferredBufferFrames);
+    if (!applyRate(dev, gPrefSampleRate, errBuf, errLen)) return nullptr;
+    setBufferFrames(dev, gPrefBufferFrames);
     return openDevice(dev, kAudioObjectUnknown, errBuf, errLen);
 }
 
@@ -272,6 +370,10 @@ AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtu
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Perangkat fisik tidak ditemukan");
         return nullptr;
     }
+    // Sample rate harus sama di master dan virtual sebelum agregat dibuat. Satu perangkat yang menolak menggagalkan pembukaan.
+    if (!applyRate(master, gPrefSampleRate, errBuf, errLen)) return nullptr;
+    if (!applyRate(deviceForUID(virtualUID1), gPrefSampleRate, errBuf, errLen)) return nullptr;
+    if (virtualUID2 && virtualUID2[0] && !applyRate(deviceForUID(virtualUID2), gPrefSampleRate, errBuf, errLen)) return nullptr;
     AudioObjectID agg = createAggregate(master, virtualUID1, virtualUID2);
     if (agg == kAudioObjectUnknown) {
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Gagal membuat aggregate (cek UID virtual device)");
@@ -280,15 +382,18 @@ AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtu
     usleep(800000);  // beri waktu HAL menerbitkan aggregate
     // Semua sub-device harus memakai buffer yang sama sebelum IO dimulai, termasuk perangkat virtual.
     // Jika tidak, agregat berjalan di 192 sementara sub-device tetap 512, dan HAL menyisipkan klik.
-    setBufferFrames(master, kPreferredBufferFrames);
-    setBufferFrames(deviceForUID(virtualUID1), kPreferredBufferFrames);
-    if (virtualUID2 && virtualUID2[0]) setBufferFrames(deviceForUID(virtualUID2), kPreferredBufferFrames);
-    setBufferFrames(agg, kPreferredBufferFrames);
+    setBufferFrames(master, gPrefBufferFrames);
+    setBufferFrames(deviceForUID(virtualUID1), gPrefBufferFrames);
+    if (virtualUID2 && virtualUID2[0]) setBufferFrames(deviceForUID(virtualUID2), gPrefBufferFrames);
+    setBufferFrames(agg, gPrefBufferFrames);
     AHIO* io = openDevice(agg, agg, errBuf, errLen);
     if (io) {
         // Kanal fisik = kanal master; sisanya dari sub-device virtual
         io->physIn = channelsOf(master, kAudioObjectPropertyScopeInput);
         io->physOut = channelsOf(master, kAudioObjectPropertyScopeOutput);
+        io->master = master;
+        io->inLatency = deviceLatency(master, kAudioObjectPropertyScopeInput);
+        io->outLatency = deviceLatency(master, kAudioObjectPropertyScopeOutput);
         // Urutan kanal di agregat: fisik, virtual 1, virtual 2
         AudioObjectID v1 = deviceForUID(virtualUID1);
         io->virt1In = channelsOf(v1, kAudioObjectPropertyScopeInput);
@@ -315,13 +420,14 @@ static AHIO* openDevice(AudioObjectID dev, AudioObjectID aggregate, char* errBuf
     if (nIn > kMaxCh || nOut > kMaxCh) return fail("Jumlah kanal melebihi batas");
 
     AHIO* io = new AHIO();
+    for (int i = 0; i < kMaxCh; i++)
+        for (int k = 0; k < kMaxFx; k++) io->fxOrder[i][k].store(k);
     io->dev = dev;
     io->aggregate = aggregate;
     io->physIn = nIn;
     io->physOut = nOut;
     io->nIn = nIn;
     io->nOut = nOut;
-    io->engine = ah_engine_create(nIn, nOut, kMaxFrames);
     for (int i = 0; i < nIn; i++) io->inPtr[i] = io->inDeint[i];
     for (int j = 0; j < nOut; j++) io->outPtr[j] = io->outDeint[j];
 
@@ -331,6 +437,12 @@ static AHIO* openDevice(AudioObjectID dev, AudioObjectID aggregate, char* errBuf
     auto rateA = addr(kAudioDevicePropertyNominalSampleRate);
     bs = sizeof(Float64);
     AudioObjectGetPropertyData(dev, &rateA, 0, nullptr, &bs, &io->sampleRate);
+    // Engine dibuat setelah rate terbaca, supaya koefisien DSP mengikuti rate perangkat yang sebenarnya.
+    io->engine = ah_engine_create_rate(nIn, nOut, kMaxFrames, io->sampleRate);
+    // Untuk pembukaan tunggal, perangkat ini adalah master. open_with_virtuals menimpanya dengan perangkat fisik.
+    io->master = dev;
+    io->inLatency = deviceLatency(dev, kAudioObjectPropertyScopeInput);
+    io->outLatency = deviceLatency(dev, kAudioObjectPropertyScopeOutput);
 
     OSStatus st = AudioDeviceCreateIOProcID(dev, ioProc, io, &io->proc);
     if (st != noErr || !io->proc) {
@@ -345,6 +457,9 @@ void ah_io_close(AHIO* io) {
     if (!io) return;
     ah_io_record_stop(io);
     ah_io_stop(io);
+    // AU harus dilepas sebelum AHIO dihapus; AUInsert tidak punya destruktor.
+    for (int i = 0; i < kMaxCh; i++)
+        for (int k = 0; k < kMaxFx; k++) audiohub::unloadInsert(io->insert[i][k]);
     delete[] io->recRing;
     io->recRing = nullptr;
     if (io->proc) AudioDeviceDestroyIOProcID(io->dev, io->proc);
@@ -383,25 +498,106 @@ void ah_io_set_channel_pan(AHIO* io, int input, float pan) {
     if (io) ah_engine_set_channel_pan(io->engine, input, pan);
 }
 
-int ah_io_insert_load(AHIO* io, int input, const char* effectName) {
-    if (!io || input < 0 || input >= io->nIn) return -1;
+namespace {
+
+bool validSlot(const AHIO* io, int input, int slot) {
+    return io && input >= 0 && input < io->nIn && slot >= 0 && slot < kMaxFx;
+}
+
+}  // namespace
+
+int ah_io_fx_load(AHIO* io, int input, int slot, const char* effectName) {
+    if (!validSlot(io, input, slot) || !effectName) return -1;
     if (io->running) return -2;
-    bool ok = audiohub::loadInsert(io->insert[input], effectName, (float)io->sampleRate, kMaxFrames);
+    bool ok = audiohub::loadInsert(io->insert[input][slot], effectName, (float)io->sampleRate, kMaxFrames);
+    io->fxOn[input][slot].store(ok);
     return ok ? 0 : -1;
 }
 
-int ah_io_insert_unload(AHIO* io, int input) {
-    if (!io || input < 0 || input >= io->nIn) return -1;
+int ah_io_fx_unload(AHIO* io, int input, int slot) {
+    if (!validSlot(io, input, slot)) return -1;
     if (io->running) return -2;
-    audiohub::unloadInsert(io->insert[input]);
+    audiohub::unloadInsert(io->insert[input][slot]);
+    io->fxOn[input][slot].store(false);
     return 0;
+}
+
+int ah_io_fx_info(AHIO* io, int input, int slot, char* name, int nameLen, int* enabled) {
+    if (name && nameLen > 0) name[0] = 0;
+    if (enabled) *enabled = 0;
+    if (!validSlot(io, input, slot)) return -1;
+    const audiohub::AUInsert& s = io->insert[input][slot];
+    if (name && nameLen > 0) std::snprintf(name, nameLen, "%s", s.name);
+    if (enabled) *enabled = io->fxOn[input][slot].load() ? 1 : 0;
+    return s.au ? 1 : 0;
+}
+
+int ah_io_fx_set_enabled(AHIO* io, int input, int slot, int enabled) {
+    if (!validSlot(io, input, slot)) return -1;
+    io->fxOn[input][slot].store(enabled != 0);
+    return 0;
+}
+
+int ah_io_fx_set_order(AHIO* io, int input, const int* order, int count) {
+    if (!io || !order || input < 0 || input >= io->nIn || count != kMaxFx) return -1;
+    bool seen[kMaxFx] = {false};
+    for (int k = 0; k < kMaxFx; k++) {
+        int s = order[k];
+        if (s < 0 || s >= kMaxFx || seen[s]) return -1;
+        seen[s] = true;
+    }
+    for (int k = 0; k < kMaxFx; k++) io->fxOrder[input][k].store(order[k]);
+    return 0;
+}
+
+int ah_io_fx_param_count(AHIO* io, int input, int slot) {
+    if (!validSlot(io, input, slot)) return -1;
+    return audiohub::paramCount(io->insert[input][slot]);
+}
+
+int ah_io_fx_param_get(AHIO* io, int input, int slot, int index, AHFxParam* out) {
+    if (!out || !validSlot(io, input, slot)) return -1;
+    audiohub::ParamInfo p;
+    if (!audiohub::paramInfo(io->insert[input][slot], index, p)) return -1;
+    out->id = p.id;
+    std::snprintf(out->name, sizeof out->name, "%s", p.name);
+    out->minValue = p.minValue;
+    out->maxValue = p.maxValue;
+    out->defaultValue = p.defaultValue;
+    out->value = p.value;
+    return 0;
+}
+
+int ah_io_fx_param_set(AHIO* io, int input, int slot, unsigned int paramId, float value) {
+    if (!validSlot(io, input, slot)) return -1;
+    return audiohub::setParamValue(io->insert[input][slot], paramId, value) ? 0 : -1;
+}
+
+int ah_io_fx_state_get(AHIO* io, int input, int slot, unsigned char* buf, int len) {
+    if (!validSlot(io, input, slot)) return -1;
+    return audiohub::getClassInfo(io->insert[input][slot], buf, len);
+}
+
+int ah_io_fx_state_set(AHIO* io, int input, int slot, const unsigned char* data, int len) {
+    if (!validSlot(io, input, slot)) return -1;
+    if (io->running) return -2;
+    return audiohub::setClassInfo(io->insert[input][slot], data, len) ? 0 : -1;
+}
+
+// Insert lama (satu per input) = slot 0 rantai FX.
+int ah_io_insert_load(AHIO* io, int input, const char* effectName) {
+    return ah_io_fx_load(io, input, 0, effectName);
+}
+
+int ah_io_insert_unload(AHIO* io, int input) {
+    return ah_io_fx_unload(io, input, 0);
 }
 
 void ah_io_insert_name(AHIO* io, int input, char* buf, int len) {
     if (!buf || len <= 0) return;
     buf[0] = 0;
-    if (!io || input < 0 || input >= io->nIn) return;
-    std::snprintf(buf, len, "%s", io->insert[input].name);
+    if (!validSlot(io, input, 0)) return;
+    std::snprintf(buf, len, "%s", io->insert[input][0].name);
 }
 
 int ah_io_list_effects(char* buf, int len) {
@@ -549,4 +745,72 @@ void ah_io_stats(AHIO* io, AHIOStats* out) {
     out->outputs = io->nOut;
     out->bufferFrames = io->bufferFrames;
     out->sampleRate = io->sampleRate;
+    out->inputLatencyFrames = io->inLatency;
+    out->outputLatencyFrames = io->outLatency;
+}
+
+// Kontrol volume dan mute hardware pada perangkat fisik utama, per kanal output (1-based).
+// Channel 0 = master. Mengembalikan 0 jika ada, -1 jika properti tidak tersedia.
+int ah_io_hw_output_get(AHIO* io, int channel, float* volume, int* mute) {
+    if (!io || io->master == kAudioObjectUnknown) return -1;
+    UInt32 el = (UInt32)channel;
+    bool any = false;
+    if (volume) {
+        auto a = addr(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput);
+        a.mElement = el;
+        if (AudioObjectHasProperty(io->master, &a)) {
+            Float32 v = 0; UInt32 sz = sizeof v;
+            if (AudioObjectGetPropertyData(io->master, &a, 0, nullptr, &sz, &v) == noErr) { *volume = v; any = true; }
+        }
+    }
+    if (mute) {
+        auto a = addr(kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput);
+        a.mElement = el;
+        if (AudioObjectHasProperty(io->master, &a)) {
+            UInt32 m = 0, sz = sizeof m;
+            if (AudioObjectGetPropertyData(io->master, &a, 0, nullptr, &sz, &m) == noErr) { *mute = m ? 1 : 0; any = true; }
+        }
+    }
+    return any ? 0 : -1;
+}
+
+// Mengatur volume dan/atau mute. volume < 0 atau mute < 0 berarti tidak diubah. Mengembalikan 0 jika ada yang berhasil.
+int ah_io_hw_output_set(AHIO* io, int channel, float volume, int mute) {
+    if (!io || io->master == kAudioObjectUnknown) return -1;
+    UInt32 el = (UInt32)channel;
+    bool ok = false;
+    if (volume >= 0) {
+        auto a = addr(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput);
+        a.mElement = el;
+        if (AudioObjectHasProperty(io->master, &a)) {
+            Float32 v = volume > 1 ? 1 : volume;
+            ok = AudioObjectSetPropertyData(io->master, &a, 0, nullptr, sizeof v, &v) == noErr || ok;
+        }
+    }
+    if (mute >= 0) {
+        auto a = addr(kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput);
+        a.mElement = el;
+        if (AudioObjectHasProperty(io->master, &a)) {
+            UInt32 m = mute ? 1 : 0;
+            ok = AudioObjectSetPropertyData(io->master, &a, 0, nullptr, sizeof m, &m) == noErr || ok;
+        }
+    }
+    return ok ? 0 : -1;
+}
+
+void ah_io_set_preferences(uint32_t bufferFrames, double sampleRate) {
+    gPrefBufferFrames = bufferFrames > 0 ? (UInt32)bufferFrames : kPreferredBufferFrames;
+    gPrefSampleRate = sampleRate > 0 ? sampleRate : 0;
+}
+
+int ah_io_device_capabilities(const char* deviceNameContains, double* rates, int maxRates,
+                              uint32_t* bufferMin, uint32_t* bufferMax) {
+    AudioObjectID dev = findDevice(deviceNameContains);
+    if (dev == kAudioObjectUnknown) return -1;
+    if (bufferMin && bufferMax) {
+        UInt32 lo = 0, hi = 0;
+        if (bufferRangeOf(dev, &lo, &hi)) { *bufferMin = lo; *bufferMax = hi; }
+        else { *bufferMin = 0; *bufferMax = 0; }
+    }
+    return supportedRates(dev, rates, maxRates);
 }

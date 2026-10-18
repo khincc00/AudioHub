@@ -239,6 +239,8 @@ final class Meters: ObservableObject {
     @Published var dropouts: UInt64 = 0
     @Published var bufferFrames: UInt32 = 0
     @Published var sampleRate: Double = 0
+    @Published var inputLatencyFrames: UInt32 = 0
+    @Published var outputLatencyFrames: UInt32 = 0
 
     func clearClip(input: Int?, output: Int?) {
         if let i = input, i < inClip.count { inClip[i] = false }
@@ -255,6 +257,28 @@ final class EngineController: ObservableObject {
         didSet { UserDefaults.standard.set(autoReconnect, forKey: "autoReconnect") }
     }
     @Published var redactDiagnostics = true
+    // Sample rate dan buffer yang dipilih pengguna. Dipasang ke perangkat saat IO dibuka ulang.
+    // Rate dan buffer hanya dipilih dari nilai yang didukung perangkat (lihat loadCapabilities).
+    @Published var supportedRates: [Double] = []
+    @Published var bufferChoices: [UInt32] = []
+    @Published var prefSampleRate: Double = {
+        let stored = UserDefaults.standard.double(forKey: "prefSampleRate")
+        return stored > 0 ? stored : 48000
+    }() {
+        didSet {
+            UserDefaults.standard.set(prefSampleRate, forKey: "prefSampleRate")
+            reopenWithPreferences()
+        }
+    }
+    @Published var prefBuffer: UInt32 = {
+        let stored = UserDefaults.standard.integer(forKey: "prefBuffer")
+        return stored > 0 ? UInt32(stored) : 512
+    }() {
+        didSet {
+            UserDefaults.standard.set(Int(prefBuffer), forKey: "prefBuffer")
+            reopenWithPreferences()
+        }
+    }
     @Published var devices: [DeviceInfo] = []
     @Published var missingRoles: [String] = []
     @Published var physIn = 0
@@ -321,7 +345,10 @@ final class EngineController: ObservableObject {
         return (Int(owner), Int(local))
     }
 
-    private var io: OpaquePointer?
+    // Handle IO aktif. Dibaca oleh AudioHub Studio untuk memuat rantai FX.
+    private(set) var io: OpaquePointer?
+    // Bertambah setiap perangkat berhasil dibuka (termasuk sambung ulang). Rantai FX memuat ulang saat berubah.
+    @Published private(set) var ioGeneration = 0
     private var timer: Timer?
     private var reconnectTimer: Timer?
     // Pembacaan "tidak hidup" berturut-turut. Satu kegagalan sesaat dari HAL tidak menghentikan IO.
@@ -334,6 +361,7 @@ final class EngineController: ObservableObject {
             self?.close()
         }
         refreshDevices()
+        installDeviceListener()
     }
 
     // MARK: - Lokasi file
@@ -358,6 +386,90 @@ final class EngineController: ObservableObject {
     func refreshDevices() {
         devices = systemDevices()
         refreshMissing()
+        loadCapabilities()
+    }
+
+    // Rate dan buffer yang didukung perangkat utama. Pilihan di luar daftar ini tidak ditawarkan.
+    private func loadCapabilities() {
+        var rates = [Double](repeating: 0, count: 16)
+        var bMin: UInt32 = 0, bMax: UInt32 = 0
+        let n = Int(ah_io_device_capabilities(deviceName, &rates, 16, &bMin, &bMax))
+        supportedRates = n > 0 ? Array(rates.prefix(n)).sorted() : []
+        let candidates: [UInt32] = [64, 128, 256, 512, 1024]
+        bufferChoices = bMax > 0 ? candidates.filter { $0 >= bMin && $0 <= bMax } : []
+    }
+
+    // Membuka ulang IO agar pilihan baru berlaku. Jika sebelumnya berjalan, langsung dijalankan lagi.
+    private func reopenWithPreferences() {
+        guard isOpen else { return }
+        let wasRunning = running
+        open()
+        if wasRunning { start() }
+    }
+
+    // MARK: - Hot-plug
+
+    private var deviceListener: AudioObjectPropertyListenerBlock?
+
+    // Daftar perangkat berubah (dicabut atau dipasang) langsung memicu pembaruan, tanpa menunggu polling.
+    private func installDeviceListener() {
+        var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                           mScope: kAudioObjectPropertyScopeGlobal,
+                                           mElement: kAudioObjectPropertyElementMain)
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async { self?.refreshDevices() }
+        }
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &a, DispatchQueue.main, block)
+        deviceListener = block
+    }
+
+    // MARK: - Kontrol hardware
+
+    // Volume dan mute hardware per kanal output fisik (HP Out). Dibaca saat perangkat dibuka.
+    @Published var hwVolume: [Float] = []
+    @Published var hwMute: [Bool] = []
+
+    func refreshHardwareControls() {
+        guard let h = io, physOut > 0 else { hwVolume = []; hwMute = []; return }
+        var vols: [Float] = [], mutes: [Bool] = []
+        for ch in 1...physOut {
+            var v: Float = 0
+            var m: Int32 = 0
+            if ah_io_hw_output_get(h, Int32(ch), &v, &m) == 0 {
+                vols.append(v)
+                mutes.append(m != 0)
+            } else {
+                vols.append(0)
+                mutes.append(false)
+            }
+        }
+        hwVolume = vols
+        hwMute = mutes
+    }
+
+    func setHwVolume(output j: Int, _ volume: Float) {
+        guard let h = io, j < hwVolume.count else { return }
+        if ah_io_hw_output_set(h, Int32(j + 1), volume, -1) == 0 { hwVolume[j] = volume }
+    }
+
+    func setHwMute(output j: Int, _ mute: Bool) {
+        guard let h = io, j < hwMute.count else { return }
+        if ah_io_hw_output_set(h, Int32(j + 1), -1, mute ? 1 : 0) == 0 { hwMute[j] = mute }
+    }
+
+    // MARK: - Aturan nama preset
+
+    // Pesan kesalahan untuk nama preset, atau nil jika nama boleh dipakai.
+    func presetNameProblem(_ raw: String) -> String? {
+        let name = sanitize(raw)
+        if name.isEmpty { return "Nama preset tidak boleh kosong" }
+        if name.count > 20 { return "Nama preset maksimal 20 karakter" }
+        return nil
+    }
+
+    // True jika nama (setelah dibersihkan) sudah dipakai preset lain.
+    func presetExists(_ raw: String) -> Bool {
+        presets.contains(sanitize(raw))
     }
 
     private var virtualUIDsInUse: [String] {
@@ -384,6 +496,8 @@ final class EngineController: ObservableObject {
         }
         var buf = [CChar](repeating: 0, count: 256)
         let handle: OpaquePointer?
+        // Pilihan buffer dan rate dipasang sebelum perangkat dibuka. Virtual device ikut memakai buffer yang sama.
+        ah_io_set_preferences(prefBuffer, prefSampleRate)
         // Virtual 1 dipakai jika dipilih; jika hanya Virtual 2 yang dipilih, dialah yang masuk aggregate.
         let uid1: String? = useVirtual ? virtualUID1 : (useVirtual2 ? virtualUID2 : nil)
         let uid2: String? = (useVirtual && useVirtual2) ? virtualUID2 : nil
@@ -403,12 +517,14 @@ final class EngineController: ObservableObject {
         outputs = Int(ah_io_outputs(h))
         physIn = Int(ah_io_physical_inputs(h))
         physOut = Int(ah_io_physical_outputs(h))
+        refreshHardwareControls()
         resetDefaults()
         loadEffectNames()
         refreshPresets()
         if let last = UserDefaults.standard.string(forKey: "lastPreset"), presets.contains(last) {
             loadPreset(last, quiet: true)
         }
+        ioGeneration += 1
         status = "Terbuka: \(inputs) in (\(physIn) fisik), \(outputs) out (\(physOut) fisik)"
     }
 
@@ -442,7 +558,7 @@ final class EngineController: ObservableObject {
         effectNames = text.split(separator: "\n").map(String.init).sorted()
     }
 
-    // Kanal virtual diberi nama perangkatnya, mis. "BlackHole 2ch · 1", supaya tidak tertukar antar vendor.
+    // Kanal virtual diberi nama perangkatnya, mis. "avhub_virtual1 · 1", supaya tidak tertukar antar perangkat.
     func defaultInLabel(_ i: Int) -> String {
         if i < physIn { return "Fisik In \(i + 1)" }
         let (owner, local) = channelOwner(i, output: false)
@@ -780,6 +896,8 @@ final class EngineController: ObservableObject {
         meters.dropouts = st.dropouts
         meters.bufferFrames = st.bufferFrames
         meters.sampleRate = st.sampleRate
+        meters.inputLatencyFrames = st.inputLatencyFrames
+        meters.outputLatencyFrames = st.outputLatencyFrames
     }
 
     // MARK: - Binding peran
@@ -847,8 +965,8 @@ final class EngineController: ObservableObject {
     }
 
     func savePreset(named raw: String) {
+        if let problem = presetNameProblem(raw) { status = problem; return }
         let name = sanitize(raw)
-        guard !name.isEmpty else { status = "Nama preset tidak valid"; return }
         let scene = SceneFile(
             name: name, deviceName: deviceName, useVirtual: useVirtual, useVirtual2: useVirtual2,
             bindings: currentBindings(),

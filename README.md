@@ -10,21 +10,27 @@ Status: **prototipe yang berfungsi di mesin uji.** Belum siap rilis. Lihat [chec
 |---|---|---|
 | Uji unit engine | `sh tests/unit/run.sh` | Tanpa perangkat keras |
 | Aplikasi | `xcodebuild -project AudioHub.xcodeproj -target AudioHub -configuration Release` | Hasil build di folder `build/` |
-| Installer DMG | `sh scripts/build_dmg.sh` | Menghasilkan `build/AudioHub-0.1.dmg` (hanya aplikasi, ditandatangani Developer ID) |
+| AudioHub Studio | `xcodegen generate --spec AudioHubStudio.yml`, lalu build target `AudioHubStudio` | Routing AudioHub ditambah rantai FX (Audio Unit) per track |
+| Probe AU | `sh tests/integration/run_au_probe.sh` | Memuat AU bawaan Apple, tanpa perangkat audio |
+| Installer DMG | `sh scripts/build_dmg.sh` | Menghasilkan `build/AudioHub-0.2.0.dmg` (aplikasi dan driver AVHub v2, ditandatangani Developer ID) |
 
-Aplikasi memakai perangkat virtual yang sudah terpasang di Mac (driver dari vendor mana pun, misalnya perangkat virtual atau BlackHole 2ch). DMG tidak menyertakan driver itu.
+Aplikasi memakai driver perangkat virtual AVHub v2 (`virtual-device/AVHubDriver/`) yang ikut dalam DMG dan dipasang otomatis bersama aplikasi.
 
 ## Struktur
 
 ```text
 apps/macos/AudioHub/        Aplikasi SwiftUI (matriks, mixer, meter, scene)
-backends/coreaudio/io/      Backend CoreAudio: perangkat fisik, aggregate dengan virtual device
+apps/macos/AudioHubStudio/  AudioHub Studio: track, rantai FX Audio Unit, routing, proyek (memakai Model.swift bersama)
+backends/coreaudio/io/      Backend CoreAudio: perangkat fisik, aggregate dengan virtual device, rantai FX
 engine/graph/               Graph routing: channel, bus, output, gain, send, meter
 engine/api/                 API C untuk engine
+engine/fx/                  Aturan nama dan penyisipan FX
 contracts/scene-schema/     Skema scene versi 1
 tests/                      Uji unit dan probe perangkat
-docs/                       Blueprint, log tiap tahap, compatibility, checklist rilis
+docs/                       Blueprint, log tiap tahap, compatibility, checklist rilis, status Studio
 ```
+
+Status AudioHub Studio terhadap spesifikasi REAPER: [docs/studio/status-spesifikasi.md](docs/studio/status-spesifikasi.md).
 
 ## Batasan yang sudah diketahui
 
