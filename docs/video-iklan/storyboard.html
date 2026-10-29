@@ -1,0 +1,658 @@
+<title>AudioHub Storyboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Rencana warna: papan produksi gelap-netral dengan aksen teal dari aplikasi.
+   Stage dan mockup aplikasi selalu gelap, supaya tampilan app tetap terbaca di kedua tema. */
+:root {
+  color-scheme: light;
+  --bg: #F3F3F0;
+  --card: #FFFFFF;
+  --fg: #1C1C1E;
+  --muted: #64646A;
+  --line: #DCDCD6;
+  --accent: #17806E;
+  --teal: #4DD1BD;
+  --amber: #FAB84D;
+  --red: #F25959;
+  --stage: #111113;
+  --mock: #1C1C1E;
+  --mock-2: #2A2A2F;
+  --mock-line: #3A3A40;
+  --mock-fg: #E9E9EC;
+  --mock-mute: #8E8E96;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131315;
+    --card: #1C1C1F;
+    --fg: #EDEDEF;
+    --muted: #9A9AA3;
+    --line: #2C2C31;
+    --accent: #4DD1BD;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131315;
+  --card: #1C1C1F;
+  --fg: #EDEDEF;
+  --muted: #9A9AA3;
+  --line: #2C2C31;
+  --accent: #4DD1BD;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 "IBM Plex Sans", system-ui, sans-serif;
+  padding-inline: 16px;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--accent); }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 36px 64px; display: grid; gap: 48px; }
+
+/* Kepala halaman */
+.hero { display: grid; gap: 20px; min-width: 0; }
+.eyebrow {
+  font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+}
+.hero h1 { font-size: clamp(30px, 5.5vw, 46px); font-weight: 600; letter-spacing: -.01em; }
+.hero .lede { color: var(--muted); max-width: 66ch; }
+.specs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px 24px; margin: 0; padding-top: 18px; border-top: 1px solid var(--line);
+}
+.specs div { display: grid; gap: 2px; min-width: 0; }
+.specs dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.specs dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.jump { display: flex; flex-wrap: wrap; gap: 10px; }
+.jump a {
+  text-decoration: none; border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; padding: 7px 14px; font-weight: 500; color: var(--fg);
+}
+.jump a:focus-visible, .frame a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Bagian video */
+.video { display: grid; gap: 20px; min-width: 0; scroll-margin-top: 20px; }
+.video-head { display: grid; gap: 6px; }
+.video-head h2 { font-size: 26px; font-weight: 600; }
+.video-head p { color: var(--muted); max-width: 66ch; }
+
+/* Skala waktu 60 detik, lebarnya proporsional */
+.timeline { display: flex; height: 34px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.seg {
+  display: flex; align-items: center; min-width: 0; padding-inline: 8px;
+  font-size: 12px; font-weight: 600; color: #0E0E10; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; border-right: 1px solid rgba(0,0,0,.25);
+}
+.seg:nth-child(3n+1) { background: var(--teal); }
+.seg:nth-child(3n+2) { background: var(--amber); }
+.seg:nth-child(3n) { background: var(--red); }
+.seg:last-child { border-right: 0; }
+.ruler {
+  display: flex; justify-content: space-between; color: var(--muted);
+  font: 500 11px "IBM Plex Mono", ui-monospace, monospace; margin-top: -10px;
+}
+
+/* Kartu frame */
+.frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 20px; }
+.frame {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; display: flex; flex-direction: column; min-width: 0;
+}
+.shot { position: relative; aspect-ratio: 16 / 9; background: var(--stage); container-type: inline-size; overflow: hidden; max-width: 100%; }
+.tc {
+  position: absolute; left: 10px; bottom: 10px; z-index: 4;
+  font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace; color: #F2F2F2;
+  background: rgba(0,0,0,.65); padding: 4px 7px; border-radius: 4px;
+}
+.frame .body { padding: 14px 16px 18px; display: grid; gap: 12px; min-width: 0; }
+.scene-no { font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.frame h3 { font-size: 16px; font-weight: 600; }
+dl.notes { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; font-size: 14px; }
+dl.notes dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding-top: 3px; }
+dl.notes dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+dl.notes dd em { font-style: normal; color: var(--fg); font-weight: 500; }
+
+/* Mockup aplikasi (ukuran mengikuti lebar frame lewat cqi) */
+.win {
+  position: absolute; inset: 9% 7% 11%; background: var(--mock);
+  border: 1px solid var(--mock-line); border-radius: 1.2cqi; overflow: visible;
+  color: var(--mock-fg); font-size: 1.25cqi; display: grid; grid-template-rows: auto 1fr auto;
+}
+.win .top {
+  display: flex; align-items: center; gap: 1.2cqi; padding: 1cqi 1.4cqi;
+  border-bottom: 1px solid var(--mock-line); position: relative; border-radius: 1.2cqi 1.2cqi 0 0;
+}
+.win .main { display: grid; grid-template-columns: 27% 1fr 24%; min-height: 0; }
+.win .col { padding: 1.2cqi; border-right: 1px solid var(--mock-line); min-width: 0; position: relative; }
+.win .col:last-child { border-right: 0; }
+.win .out {
+  display: flex; gap: 2cqi; align-items: flex-end; padding: 1.2cqi 1.4cqi;
+  border-top: 1px solid var(--mock-line); border-radius: 0 0 1.2cqi 1.2cqi;
+}
+.win .out .strip { flex: 1; min-width: 0; display: grid; gap: .8cqi; justify-items: center; font-size: 1.1cqi; color: var(--mock-mute); }
+.brand { display: flex; align-items: center; gap: .8cqi; font-weight: 600; white-space: nowrap; }
+.brand i { width: 1.6cqi; height: 1.6cqi; border-radius: .4cqi; background: var(--teal); display: inline-block; }
+.btn, .sel {
+  border: 1px solid var(--mock-line); background: var(--mock-2); border-radius: .8cqi;
+  padding: .5cqi 1.1cqi; white-space: nowrap; color: var(--mock-fg);
+}
+.btn.go { background: var(--teal); color: #0E0E10; border-color: transparent; font-weight: 600; }
+.pill { display: inline-flex; align-items: center; gap: .6cqi; border-radius: 99px; background: var(--mock-2); padding: .5cqi 1.2cqi; white-space: nowrap; }
+.pill::before { content: ""; width: .9cqi; height: .9cqi; border-radius: 50%; background: var(--teal); }
+.lbl { color: var(--mock-mute); font-size: 1.05cqi; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .8cqi; white-space: nowrap; }
+.row { display: flex; align-items: center; gap: 1cqi; margin-bottom: 1.1cqi; min-width: 0; }
+.nm { flex: 0 0 22%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mock-fg); }
+.chip {
+  width: 2.6cqi; height: 2.3cqi; border-radius: .6cqi; display: grid; place-items: center;
+  font-weight: 700; background: var(--mock-2); color: var(--mock-mute); font-size: 1.2cqi; flex: 0 0 auto;
+}
+.chip.s { background: var(--amber); color: #0E0E10; }
+.chip.m { background: var(--red); color: #0E0E10; }
+.chip.on-link { background: var(--teal); color: #0E0E10; }
+.sl { position: relative; flex: 1; height: .6cqi; background: var(--mock-2); border-radius: 1cqi; min-width: 0; }
+.sl i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); border-radius: inherit; }
+.sl b { position: absolute; top: 50%; width: 2cqi; height: 2cqi; border-radius: 50%; background: #F2F2F2; transform: translate(-50%, -50%); }
+.val { width: 5.5cqi; text-align: right; color: var(--mock-mute); font-variant-numeric: tabular-nums; white-space: nowrap; flex: 0 0 auto; }
+.meter { height: .6cqi; border-radius: 1cqi; background: linear-gradient(90deg, var(--teal) 0 72%, var(--amber) 72% 88%, var(--red) 88%); flex: 1; min-width: 0; opacity: .9; }
+.cell { aspect-ratio: 1.5; border-radius: .6cqi; background: var(--mock-2); border: 1px solid var(--mock-line); }
+.cell.on { background: var(--teal); border-color: var(--teal); }
+.grid4 { display: grid; grid-template-columns: 4.2cqi repeat(4, 1fr); gap: .9cqi; align-items: center; }
+.grid4 .h { color: var(--mock-mute); font-size: 1.05cqi; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid4 .rl { color: var(--mock-mute); font-size: 1.05cqi; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu {
+  position: absolute; background: #2A2A2F; border: 1px solid var(--mock-line); border-radius: 1cqi;
+  padding: .6cqi; z-index: 3; box-shadow: 0 1cqi 3cqi rgba(0,0,0,.5); min-width: 26cqi;
+}
+.menu div { padding: .8cqi 1.1cqi; border-radius: .6cqi; white-space: nowrap; font-size: 1.2cqi; }
+.menu .hov { background: var(--teal); color: #0E0E10; font-weight: 600; }
+.menu hr { border: 0; border-top: 1px solid var(--mock-line); margin: .5cqi 0; }
+.card { background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; padding: 2cqi; color: var(--mock-fg); font-size: 1.25cqi; }
+.pop { position: absolute; background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; box-shadow: 0 1cqi 3cqi rgba(0,0,0,.5); color: var(--mock-fg); font-size: 1.25cqi; }
+.tabs { display: flex; gap: .5cqi; background: var(--mock-2); border-radius: .9cqi; padding: .4cqi; margin-bottom: 1.6cqi; }
+.tabs span { flex: 1; text-align: center; padding: .5cqi 0; border-radius: .6cqi; color: var(--mock-mute); font-size: 1.1cqi; white-space: nowrap; overflow: hidden; }
+.tabs span.act { background: #3A3A40; color: var(--mock-fg); font-weight: 600; }
+.hl { outline: .2cqi solid var(--teal); outline-offset: .5cqi; border-radius: .6cqi; }
+.n {
+  position: absolute; top: -1.6cqi; left: -1.6cqi; width: 2.8cqi; height: 2.8cqi; border-radius: 50%;
+  background: var(--teal); color: #0E0E10; font: 700 1.3cqi/2.8cqi "IBM Plex Sans", sans-serif; text-align: center; z-index: 5;
+}
+.vfader { width: 3cqi; height: 16cqi; position: relative; flex: 0 0 auto; }
+.vfader::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: .5cqi; transform: translateX(-50%); background: var(--mock-2); border-radius: 1cqi; }
+.vfader i { position: absolute; left: 50%; bottom: 0; width: .5cqi; transform: translateX(-50%); background: var(--teal); border-radius: 1cqi; }
+.vfader b { position: absolute; left: 0; width: 3cqi; height: 1.4cqi; background: #F2F2F2; border-radius: .4cqi; transform: translateY(50%); }
+
+/* Layar pembuka, kartu penutup, dan tampilan khusus */
+.center { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 2.2cqi; text-align: center; padding: 6cqi; }
+.logo { display: flex; align-items: center; gap: 2cqi; }
+.logo svg { width: 9cqi; height: 9cqi; }
+.logo svg rect { fill: var(--teal); }
+.logo strong { font-size: 6cqi; font-weight: 600; color: #F2F2F2; letter-spacing: -.01em; }
+.tag { font-size: 2.2cqi; color: #C9C9CF; }
+.small { font-size: 1.8cqi; color: #8E8E96; }
+.cta { display: inline-block; background: var(--teal); color: #0E0E10; font-weight: 600; font-size: 2.4cqi; border-radius: 99px; padding: 1.1cqi 3cqi; }
+.kicker { font-size: 2.6cqi; color: #F2F2F2; font-weight: 600; text-wrap: balance; max-width: 80%; }
+.ghost { position: absolute; color: #5A5A62; font-size: 1.6cqi; }
+.dmg { position: absolute; left: 6%; top: 14%; width: 46%; height: 48%; background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; display: grid; place-content: center; justify-items: center; gap: 1.4cqi; color: var(--mock-fg); font-size: 1.4cqi; }
+.dmg .ic { width: 9cqi; height: 9cqi; border-radius: 2cqi; background: var(--mock-2); display: grid; place-items: center; font: 700 1.6cqi "IBM Plex Mono", monospace; color: var(--teal); }
+.dlg { position: absolute; right: 6%; top: 14%; width: 40%; height: 48%; background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; padding: 2.2cqi; display: grid; align-content: center; gap: 1.6cqi; color: var(--mock-fg); font-size: 1.4cqi; }
+.dlg .dots { font-size: 2cqi; letter-spacing: .25em; color: var(--mock-mute); }
+.drv { position: absolute; left: 6%; right: 6%; bottom: 10%; height: 24%; background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; padding: 0 2.2cqi; display: flex; align-items: center; gap: 1.6cqi; color: var(--mock-fg); font-size: 1.5cqi; }
+.drv::before { content: ""; width: 1.2cqi; height: 1.2cqi; border-radius: 50%; background: var(--teal); flex: 0 0 auto; }
+.drv small { color: var(--mock-mute); font-size: 1.2cqi; font-family: "IBM Plex Mono", monospace; }
+.tile { position: absolute; left: 6%; top: 10%; right: 6%; bottom: 12%; display: grid; gap: 2cqi; align-content: center; }
+.ptitle { font-size: 1.3cqi; color: var(--mock-mute); text-transform: uppercase; letter-spacing: .06em; }
+.sheet { background: var(--mock); border: 1px solid var(--mock-line); border-radius: 1.2cqi; padding: 2cqi; color: var(--mock-fg); font-size: 1.25cqi; display: grid; gap: 1.4cqi; align-content: start; }
+.tpl { display: grid; grid-template-columns: 1fr 1fr; gap: 1cqi; }
+.tpl span { background: var(--mock-2); border: 1px solid var(--mock-line); border-radius: .8cqi; padding: 1.1cqi; text-align: center; color: var(--mock-fg); white-space: nowrap; }
+.tpl span.hl2 { background: var(--teal); color: #0E0E10; border-color: var(--teal); font-weight: 600; }
+
+/* Catatan kaki */
+.foot { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 18px; max-width: 80ch; }
+
+/* Layar sempit */
+@media (max-width: 520px) {
+  body { padding-inline: 16px; }
+  .wrap { gap: 40px; }
+  .video-head h2 { font-size: 22px; }
+  .timeline { height: 40px; }
+  .seg { font-size: 11px; padding-inline: 5px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<main class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">Storyboard visual · Draf · Belum dirender</p>
+    <h1>AudioHub Storyboard</h1>
+    <p class="lede">Dua video iklan animasi 2D, masing-masing tepat 60 detik. Video 1 memperkenalkan AudioHub dan cara memasangnya. Video 2 memperlihatkan fitur utama. Gambar di bawah adalah sketsa, bukan tangkapan layar asli.</p>
+    <dl class="specs">
+      <div><dt>Durasi</dt><dd>60 detik per video</dd></div>
+      <div><dt>Rasio</dt><dd>16:9, 1920 × 1080, 30 fps</dd></div>
+      <div><dt>Narasi</dt><dd>Teks saja, direkam pemilik</dd></div>
+      <div><dt>Bahasa</dt><dd>Indonesia, tanpa subtitle Inggris</dd></div>
+      <div><dt>Versi app</dt><dd>AudioHub 0.3.0 (build 3)</dd></div>
+      <div><dt>CTA</dt><dd>audiohub.khincreator.com</dd></div>
+    </dl>
+    <nav class="jump" aria-label="Lompat ke video">
+      <a href="#video-1">Video 1 · Perkenalan</a>
+      <a href="#video-2">Video 2 · Fitur</a>
+    </nav>
+  </header>
+
+  <!-- ============ VIDEO 1 ============ -->
+  <section class="video" id="video-1" aria-labelledby="v1-title">
+    <div class="video-head">
+      <p class="eyebrow">Video 1 · 60 detik</p>
+      <h2 id="v1-title">Perkenalan</h2>
+      <p>Apa itu AudioHub, cara memasangnya, lalu cara menyiapkan perangkat sampai berjalan.</p>
+    </div>
+
+    <div>
+      <div class="timeline" role="img" aria-label="Skala waktu video 1: Pembuka 8 detik, Perkenalan 10 detik, Pemasangan 14 detik, Setting 18 detik, Penutup 10 detik">
+        <div class="seg" style="flex: 8 0 0">Pembuka</div>
+        <div class="seg" style="flex: 10 0 0">Perkenalan</div>
+        <div class="seg" style="flex: 14 0 0">Pemasangan</div>
+        <div class="seg" style="flex: 18 0 0">Setting</div>
+        <div class="seg" style="flex: 10 0 0">Penutup</div>
+      </div>
+      <div class="ruler"><span>0:00</span><span>0:30</span><span>1:00</span></div>
+    </div>
+
+    <div class="frames">
+
+      <article class="frame">
+        <div class="shot">
+          <svg viewBox="0 0 320 180" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+            <path d="M0,60 C50,10 90,130 140,70 S220,20 320,95" fill="none" stroke="#4DD1BD" stroke-width="3" vector-effect="non-scaling-stroke"/>
+            <path d="M0,110 C60,160 110,40 170,100 S260,150 320,70" fill="none" stroke="#FAB84D" stroke-width="3" vector-effect="non-scaling-stroke"/>
+            <path d="M0,150 C40,90 120,170 190,120 S270,40 320,140" fill="none" stroke="#F25959" stroke-width="3" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <span class="ghost" style="left:4%;top:8%">Mikrofon</span>
+          <span class="ghost" style="right:4%;top:20%">Musik</span>
+          <span class="ghost" style="left:4%;bottom:6%">Aplikasi panggilan</span>
+          <span class="tc">0:00–0:08</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 1 · Pembuka</p>
+          <h3>Tiga sumber, satu tempat</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Latar gelap. Tiga garis gelombang berwarna bergerak kacau dan saling bertabrakan.</dd>
+            <dt>Teks layar</dt><dd><em>Mikrofon, musik, dan aplikasi panggilan. Semuanya ingin masuk ke satu tempat.</em></dd>
+            <dt>Narasi</dt><dd>Mikrofon, musik, dan aplikasi panggilan, semuanya perlu jalurnya sendiri.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="center">
+            <div class="logo">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="6" y="26" width="4" height="12" rx="2"/>
+                <rect x="14" y="18" width="4" height="28" rx="2"/>
+                <rect x="22" y="10" width="4" height="44" rx="2"/>
+                <rect x="30" y="4" width="4" height="56" rx="2"/>
+                <rect x="38" y="10" width="4" height="44" rx="2"/>
+                <rect x="46" y="18" width="4" height="28" rx="2"/>
+                <rect x="54" y="26" width="4" height="12" rx="2"/>
+              </svg>
+              <strong>AudioHub</strong>
+            </div>
+            <p class="tag">Routing audio profesional untuk macOS.</p>
+            <p class="small">macOS 13 atau lebih baru · Apple Silicon dan Intel</p>
+          </div>
+          <span class="tc">0:08–0:18</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 2 · Perkenalan AudioHub</p>
+          <h3>Kenalkan aplikasinya</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Garis-garis tadi tertata dan menyatu menjadi ikon waveform. Nama muncul, lalu jendela aplikasi masuk dengan scale-in.</dd>
+            <dt>Teks layar</dt><dd><em>AudioHub. Routing audio profesional untuk macOS.</em></dd>
+            <dt>Narasi</dt><dd>Kenalkan AudioHub, pengatur routing audio profesional untuk Mac.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="dmg">
+            <div class="ic">PKG</div>
+            <span>Install AudioHub.pkg</span>
+          </div>
+          <div class="dlg">
+            <strong>Masukkan kata sandi</strong>
+            <span class="dots">••••••••</span>
+            <span class="btn go" style="justify-self:end">Instal</span>
+          </div>
+          <div class="drv">
+            <span>AVHub Driver terpasang<br><small>avhub_virtual1 · avhub_virtual2</small></span>
+          </div>
+          <span class="tc">0:18–0:32</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 3 · Pemasangan</p>
+          <h3>Pasang sekali</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Buka DMG, klik installer, dialog kata sandi muncul (dibuat ulang, bukan tangkapan layar). Driver muncul di daftar perangkat.</dd>
+            <dt>Opsional</dt><dd>Satu frame Terminal yang menampilkan kedua perangkat virtual.</dd>
+            <dt>Teks layar</dt><dd><em>Pasang sekali. Driver AVHub ikut terpasang.</em></dd>
+            <dt>Narasi</dt><dd>Buka DMG, jalankan installer, lalu masukkan kata sandi administrator. Driver AVHub ikut terpasang.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="win">
+            <div class="top">
+              <div class="brand"><i></i>AudioHub</div>
+              <span class="sel hl" style="position:relative">Maono ProStudio 2x2 ▾<span class="n">1</span></span>
+              <span class="sel hl" style="position:relative">Virtual 1 + 2 ▾<span class="n">2</span></span>
+              <span class="btn hl" style="position:relative">Buka<span class="n">3</span></span>
+              <span class="btn go hl" style="position:relative">Mulai<span class="n">4</span></span>
+              <span class="pill">Berjalan</span>
+              <span class="btn hl" style="position:relative;margin-left:auto">⚙<span class="n">5</span></span>
+              <div class="menu" style="right:1.4cqi;top:calc(100% + 1cqi)">
+                <div>Sambung ulang otomatis ✓</div>
+                <hr>
+                <div>Sample rate · 48,0 kHz</div>
+                <div class="hov">Buffer · 512 frame (10,7 ms)</div>
+                <hr>
+                <div>Tampilan · Sistem</div>
+              </div>
+            </div>
+            <div class="main" style="grid-template-columns:1fr;opacity:.35"><div class="col" style="height:100%"></div></div>
+            <div class="out" style="opacity:.35"><div class="strip"></div></div>
+          </div>
+          <span class="tc">0:32–0:50</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 4 · Setting perangkat</p>
+          <h3>Pilih, buka, mulai</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Sorot bilah atas dari kiri ke kanan: perangkat fisik, Virtual 1 dan 2, Buka, lalu Mulai sampai status berjalan. Roda gigi dibuka untuk menunjukkan sample rate dan buffer.</dd>
+            <dt>Teks layar</dt><dd><em>Pilih perangkat. Buka. Mulai.</em></dd>
+            <dt>Narasi</dt><dd>Pilih perangkat fisik dan perangkat virtual, lalu tekan Buka dan Mulai. Sample rate dan buffer diatur dari menu pengaturan.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="center">
+            <div class="logo">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="6" y="26" width="4" height="12" rx="2"/>
+                <rect x="14" y="18" width="4" height="28" rx="2"/>
+                <rect x="22" y="10" width="4" height="44" rx="2"/>
+                <rect x="30" y="4" width="4" height="56" rx="2"/>
+                <rect x="38" y="10" width="4" height="44" rx="2"/>
+                <rect x="46" y="18" width="4" height="28" rx="2"/>
+                <rect x="54" y="26" width="4" height="12" rx="2"/>
+              </svg>
+              <strong>AudioHub</strong>
+            </div>
+            <p class="tag">Routing audio profesional untuk macOS.</p>
+            <span class="cta">audiohub.khincreator.com</span>
+            <p class="small">Versi 0.3.0 · macOS 13 atau lebih baru<br>Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi.</p>
+          </div>
+          <span class="tc">0:50–1:00</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 5 · Penutup</p>
+          <h3>Kartu akhir</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Logo waveform dan nama AudioHub. Di bawahnya CTA dan keterangan versi.</dd>
+            <dt>Teks layar</dt><dd><em>AudioHub. Routing audio profesional untuk macOS.</em> + CTA situs.</dd>
+            <dt>Narasi</dt><dd>AudioHub. Atur audio Mac Anda dengan lebih mudah.</dd>
+          </dl>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============ VIDEO 2 ============ -->
+  <section class="video" id="video-2" aria-labelledby="v2-title">
+    <div class="video-head">
+      <p class="eyebrow">Video 2 · 60 detik</p>
+      <h2 id="v2-title">Fitur</h2>
+      <p>Kontrol utama dalam satu jendela: slider, routing, efek, dan preset.</p>
+    </div>
+
+    <div>
+      <div class="timeline" role="img" aria-label="Skala waktu video 2: Pembuka 6 detik, Slider 12 detik, Routing 12 detik, Efek 12 detik, Preset 10 detik, Penutup 8 detik">
+        <div class="seg" style="flex: 6 0 0">Pembuka</div>
+        <div class="seg" style="flex: 12 0 0">Slider</div>
+        <div class="seg" style="flex: 12 0 0">Routing</div>
+        <div class="seg" style="flex: 12 0 0">Efek</div>
+        <div class="seg" style="flex: 10 0 0">Preset</div>
+        <div class="seg" style="flex: 8 0 0">Penutup</div>
+      </div>
+      <div class="ruler"><span>0:00</span><span>0:30</span><span>1:00</span></div>
+    </div>
+
+    <div class="frames">
+
+      <article class="frame">
+        <div class="shot">
+          <div class="win">
+            <div class="top"><div class="brand"><i></i>AudioHub</div><span class="pill">Berjalan</span></div>
+            <div class="main">
+              <div class="col hl" style="margin:1.4cqi;border-radius:1cqi"><span class="n">1</span>
+                <div class="lbl">Input</div>
+                <div class="row"><span class="nm">Fisik In 1</span><div class="meter" style="flex:1"></div></div>
+                <div class="row"><span class="nm">Fisik In 2</span><div class="meter" style="flex:.4"></div></div>
+                <div class="row"><span class="nm">Virtual · 1</span><div class="meter" style="flex:.6"></div></div>
+              </div>
+              <div class="col hl" style="margin:1.4cqi;border-radius:1cqi"><span class="n">2</span>
+                <div class="lbl">Routing · Matriks</div>
+                <div class="grid4">
+                  <span></span><span class="h">Out 1</span><span class="h">Out 2</span><span class="h">Out 3</span><span class="h">Out 4</span>
+                  <span class="rl">In 1</span><span class="cell on"></span><span class="cell"></span><span class="cell on"></span><span class="cell"></span>
+                  <span class="rl">In 2</span><span class="cell"></span><span class="cell on"></span><span class="cell"></span><span class="cell"></span>
+                  <span class="rl">In 3</span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+                </div>
+              </div>
+              <div class="col hl" style="margin:1.4cqi;border-radius:1cqi"><span class="n">3</span>
+                <div class="lbl">Samping</div>
+                <div class="tabs"><span class="act">Preset</span><span>Perangkat</span><span>Diagnostik</span></div>
+                <div class="row"><span class="nm">Podcast</span></div>
+                <div class="row"><span class="nm">Streaming</span></div>
+              </div>
+            </div>
+            <div class="out hl" style="margin:0 1.4cqi 1.4cqi;border-radius:1cqi;position:relative"><span class="n">4</span>
+              <div class="strip"><span>Out 1 · 0,0 dB</span><div class="vfader"><i style="height:60%"></i><b style="bottom:60%"></b></div></div>
+              <div class="strip"><span>Out 2 · −4,0 dB</span><div class="vfader"><i style="height:45%"></i><b style="bottom:45%"></b></div></div>
+            </div>
+          </div>
+          <span class="tc">0:00–0:06</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 1 · Pembuka</p>
+          <h3>Satu jendela</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Jendela utama muncul. Input, Routing, Samping, dan Output disorot bergantian.</dd>
+            <dt>Teks layar</dt><dd><em>Satu jendela untuk semua kanal.</em></dd>
+            <dt>Narasi</dt><dd>Semua input dan output ada dalam satu jendela.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="card" style="position:absolute;left:5%;top:9%;width:62%;bottom:9%;display:grid;align-content:center;gap:2.6cqi">
+            <div class="row" style="margin:0"><span class="nm" style="flex:0 0 26%">Fisik In 1</span><span class="chip m">M</span><span class="chip s">S</span><span class="chip">FX</span></div>
+            <div class="row hl" style="position:relative;margin:0"><span class="n">1</span><span class="nm" style="flex:0 0 16%">Gain</span><span class="sl"><i style="width:72%"></i><b style="left:72%"></b></span><span class="val">−6,0 dB</span></div>
+            <div class="row hl" style="position:relative;margin:0"><span class="n">2</span><span class="nm" style="flex:0 0 16%">Pan</span><span class="sl"><i style="left:45%;width:5%"></i><b style="left:50%"></b></span><span class="val">C</span></div>
+            <div class="row" style="margin:0"><span class="nm" style="flex:0 0 16%">Solo / Mute</span><span class="chip s hl" style="position:relative">S<span class="n">3</span></span><span class="chip m hl" style="position:relative">M</span></div>
+          </div>
+          <div class="card hl" style="position:absolute;right:6%;top:9%;bottom:9%;width:20%;display:grid;justify-items:center;align-content:center;gap:2.2cqi;position:absolute">
+            <span class="n" style="top:-1.6cqi;left:-1.6cqi">4</span>
+            <div class="lbl" style="margin:0">Out 1</div>
+            <div class="vfader" style="height:26cqi"><i style="height:62%"></i><b style="bottom:62%"></b></div>
+            <span class="val" style="width:auto">0,0 dB</span>
+            <span class="btn" style="font-size:1.2cqi">0 dB</span>
+          </div>
+          <span class="tc">0:06–0:18</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 2 · Slider</p>
+          <h3>Gain, pan, dan output</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>1. Gain bergerak dari −60 ke +12 dB. 2. Pan bergerak dari L ke C ke R. 3. Tombol M dan S diklik. 4. Fader output bergerak, lalu tombol 0 dB mengembalikan ke 0.</dd>
+            <dt>Teks layar</dt><dd><em>Gain. Pan. Mute. Solo.</em></dd>
+            <dt>Narasi</dt><dd>Geser gain untuk mengatur level tiap input. Pan menempatkan suara di kiri atau kanan. Bisukan kanal dengan satu klik.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="win" style="inset:9% 6% 11%">
+            <div class="top"><div class="brand"><i></i>Routing</div><span class="sel">Matriks</span><span class="sel" style="opacity:.6">Graph</span></div>
+            <div class="main" style="grid-template-columns:1fr">
+              <div class="col" style="padding:2.2cqi">
+                <div class="grid4" style="grid-template-columns:6cqi repeat(4,1fr)">
+                  <span></span><span class="h">Out 1</span><span class="h">Out 2</span><span class="h">Out 3</span><span class="h">Out 4</span>
+                  <span class="rl">In 1</span><span class="cell on"></span><span class="cell"></span><span class="cell on"></span><span class="cell"></span>
+                  <span class="rl">In 2</span><span class="cell"></span><span class="cell hl" style="position:relative"><span class="n">1</span></span><span class="cell"></span><span class="cell"></span>
+                  <span class="rl">In 3</span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+                </div>
+              </div>
+            </div>
+            <div class="menu" style="left:52%;top:40%;min-width:22cqi">
+              <div>Send 0 dB</div>
+              <div class="hov" style="position:relative">Send −6 dB<span class="n" style="top:50%;left:auto;right:-3cqi;transform:translateY(-50%)">2</span></div>
+              <div>Send −12 dB</div>
+              <hr>
+              <div>Matikan koneksi</div>
+            </div>
+          </div>
+          <span class="tc">0:18–0:30</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 3 · Routing matriks</p>
+          <h3>Klik untuk menghubungkan</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>1. Klik sel, lalu sel menyala teal. 2. Klik kanan menampilkan Send 0, −6, dan −12 dB. 3. Tombol Graph menampilkan koneksi sebagai kurva.</dd>
+            <dt>Catatan</dt><dd>Graph hanya menampilkan. Koneksi diubah di Matriks.</dd>
+            <dt>Teks layar</dt><dd><em>Klik untuk menghubungkan. Klik kanan untuk mengatur send.</em></dd>
+            <dt>Narasi</dt><dd>Klik kotak persimpangan untuk menghubungkan input ke output. Klik kanan untuk mengatur send.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="pop" style="left:4%;top:9%;width:50%;bottom:9%;padding:2.4cqi">
+            <div class="tabs"><span>Gate</span><span class="act">EQ</span><span>Kompresor</span><span>Delay</span></div>
+            <div class="row" style="margin-bottom:2cqi"><span class="nm" style="flex:0 0 36%">Aktifkan EQ</span><span class="chip on-link" style="width:4cqi">On</span></div>
+            <div class="row"><span class="nm" style="flex:0 0 36%">Low shelf</span><span class="sl"><i style="width:55%"></i><b style="left:55%"></b></span><span class="val">0,0 dB</span></div>
+            <div class="row"><span class="nm" style="flex:0 0 36%">Mid peak</span><span class="sl"><i style="width:68%"></i><b style="left:68%"></b></span><span class="val">+2,0 dB</span></div>
+            <div class="row"><span class="nm" style="flex:0 0 36%">High shelf</span><span class="sl"><i style="width:50%"></i><b style="left:50%"></b></span><span class="val">0,0 dB</span></div>
+            <span class="n" style="top:-1.6cqi;left:-1.6cqi">1</span>
+          </div>
+          <div class="pop hl" style="right:4%;top:24%;width:40%;padding:2.2cqi">
+            <span class="n" style="top:-1.6cqi;left:-1.6cqi">2</span>
+            <div class="lbl" style="margin-bottom:1.6cqi">Limiter · Out 1</div>
+            <div class="row"><span class="nm" style="flex:0 0 34%">Ceiling</span><span class="sl"><i style="width:80%"></i><b style="left:80%"></b></span><span class="val">−1,0 dB</span></div>
+            <div class="row"><span class="nm" style="flex:0 0 34%">Lookahead</span><span class="sl"><i style="width:30%"></i><b style="left:30%"></b></span><span class="val">6,0 ms</span></div>
+          </div>
+          <span class="tc">0:30–0:42</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 4 · Efek dan limiter</p>
+          <h3>Efek per input, limiter per output</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>1. Popover efek dibuka: Gate, EQ, Kompresor, Delay. Ikon teal saat efek aktif. 2. Limiter output dibuka. 3. Lampu clip menyala lalu dihapus.</dd>
+            <dt>Batasan</dt><dd>Jangan tampilkan pengaturan plugin Audio Unit. Parameternya belum bisa diatur dari app.</dd>
+            <dt>Teks layar</dt><dd><em>Gate, EQ, kompresor, delay. Limiter untuk output.</em></dd>
+            <dt>Narasi</dt><dd>Setiap input punya gate, EQ, kompresor, dan delay. Setiap output punya limiter untuk menjaga level tetap di bawah batas.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="tile" style="grid-template-columns:1fr 1fr;align-content:stretch;gap:2.4cqi">
+            <div class="sheet">
+              <span class="ptitle">Preset tersimpan</span>
+              <span class="sel hl" style="position:relative;justify-self:start">Podcast Malam ▾<span class="n">1</span></span>
+              <div style="display:flex;gap:1cqi"><span class="btn">Muat</span><span class="btn" style="color:var(--red)">Hapus</span></div>
+              <span class="ptitle" style="margin-top:1cqi">Simpan sebagai</span>
+              <div style="display:flex;gap:1cqi"><span class="sel" style="flex:1;color:var(--mock-mute)">Nama preset</span><span class="btn go">Simpan</span></div>
+            </div>
+            <div class="sheet">
+              <span class="ptitle">Template</span>
+              <div class="tpl">
+                <span class="hl2 hl" style="position:relative">Podcast<span class="n">2</span></span>
+                <span>Streaming</span>
+                <span>Online Meeting</span>
+                <span>Recording</span>
+              </div>
+            </div>
+          </div>
+          <span class="tc">0:42–0:52</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 5 · Preset dan template</p>
+          <h3>Simpan atau mulai dari template</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>1. Preset dipilih dari dropdown. 2. Empat template (Podcast, Streaming, Online Meeting, Recording) disorot bergantian.</dd>
+            <dt>Teks layar</dt><dd><em>Simpan preset. Mulai dari template.</em></dd>
+            <dt>Narasi</dt><dd>Simpan konfigurasi sebagai preset, atau mulai dari template untuk podcast, streaming, rapat online, atau rekaman.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="frame">
+        <div class="shot">
+          <div class="center">
+            <div class="logo">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="6" y="26" width="4" height="12" rx="2"/>
+                <rect x="14" y="18" width="4" height="28" rx="2"/>
+                <rect x="22" y="10" width="4" height="44" rx="2"/>
+                <rect x="30" y="4" width="4" height="56" rx="2"/>
+                <rect x="38" y="10" width="4" height="44" rx="2"/>
+                <rect x="46" y="18" width="4" height="28" rx="2"/>
+                <rect x="54" y="26" width="4" height="12" rx="2"/>
+              </svg>
+              <strong>AudioHub</strong>
+            </div>
+            <p class="kicker">Coba AudioHub.</p>
+            <span class="cta">audiohub.khincreator.com</span>
+            <p class="small">Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi.</p>
+          </div>
+          <span class="tc">0:52–1:00</span>
+        </div>
+        <div class="body">
+          <p class="scene-no">Scene 6 · Penutup</p>
+          <h3>Kartu akhir</h3>
+          <dl class="notes">
+            <dt>Visual</dt><dd>Logo waveform dan nama AudioHub, sama dengan Video 1.</dd>
+            <dt>Teks layar</dt><dd><em>Coba AudioHub.</em> + CTA situs.</dd>
+            <dt>Narasi</dt><dd>Unduh AudioHub dan coba sendiri.</dd>
+          </dl>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <footer class="foot">
+    Draf visual untuk ditinjau. Belum ada render. Label, angka, dan nilai slider di sketsa mengikuti build 0.3.0, dengan contoh nilai untuk memperjelas gerakan. Sumber naskah: brief.md di folder docs/video-iklan.
+  </footer>
+
+</main>
