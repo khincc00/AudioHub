@@ -13,7 +13,10 @@ DRIVER_STAGE="$BUILD/driver-stage"
 DRIVER_SCRIPTS="$BUILD/driver-scripts"
 DMG_SRC="$BUILD/dmg"
 PKG_NAME="Install AudioHub.pkg"
-DMG="$ROOT/build/AudioHub-0.3.0.dmg"
+# Folder hasil. Bisa diganti lewat OUT_DIR, misalnya folder installer terpisah di luar repo.
+OUT_DIR="${OUT_DIR:-$ROOT/build}"
+mkdir -p "$OUT_DIR"
+DMG="$OUT_DIR/AudioHub-0.3.0.dmg"
 APP_ID="${APP_ID:-Developer ID Application: taufiq sholikhin (MYQ2H766UX)}"
 INSTALLER_ID="${INSTALLER_ID:-Developer ID Installer: taufiq sholikhin (MYQ2H766UX)}"
 
