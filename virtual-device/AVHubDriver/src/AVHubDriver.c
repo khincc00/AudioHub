@@ -1,8 +1,8 @@
 // Hak Cipta © 2026 taufiq sholikhin. Seluruh hak dilindungi. Situs: audiohub.khincreator.com
 // Lisensi lengkap ada di berkas LICENSE pada folder ini.
 //
-// Driver audio virtual AVHub v2: dua perangkat loopback stereo.
-//   avhub_virtual1  dan  avhub_virtual2
+// Driver audio virtual AVHub v2: tiga perangkat loopback stereo.
+//   avhub_virtual1  dan  avhub_virtual2  dan  avhub_loopback
 //
 // Ditulis dari nol berdasarkan antarmuka AudioServerPlugIn.h (SDK Apple). Kode driver lain
 // tidak disalin; perilakunya hanya dijadikan acuan.
@@ -40,7 +40,7 @@
 #define kMinBufferFrames   16
 #define kMaxBufferFrames   4096
 #define kRingFrames        65536    // harus pangkat dua; sekitar 1,4 detik di 48 kHz
-#define kDeviceCount       2
+#define kDeviceCount       3
 #define kMaxOwnedObjects   10       // dipakai untuk menyusun daftar objek milik perangkat
 #define kZeroTimeStampPeriodFrames 16384
 #define kBufferSizeReported        4096
@@ -123,6 +123,11 @@ static Device gDevices[kDeviceCount] = {
       .volume = 1.0f, .mute = 0, .pitch = kPitchNeutral, .clockSource = 0 },
     { .uid = "avhub_virtual2", .deviceID = 20, .outputStreamID = 21, .inputStreamID = 22,
       .volumeID = 23, .muteID = 24, .pitchID = 25, .clockSourceID = 26, .outVolumeID = 27, .outMuteID = 28, .volumeAltID = 29, .lock = PTHREAD_MUTEX_INITIALIZER,
+      .sampleRate = kDefaultSampleRate, .bufferFrames = kBufferFrames,
+      .rates = kRatesAVHub, .rateCount = kSupportedRateCount, .periodFrames = kZeroTimeStampPeriodFrames,
+      .volume = 1.0f, .mute = 0, .pitch = kPitchNeutral, .clockSource = 0 },
+    { .uid = "avhub_loopback", .deviceID = 30, .outputStreamID = 31, .inputStreamID = 32,
+      .volumeID = 33, .muteID = 34, .pitchID = 35, .clockSourceID = 36, .outVolumeID = 37, .outMuteID = 38, .volumeAltID = 39, .lock = PTHREAD_MUTEX_INITIALIZER,
       .sampleRate = kDefaultSampleRate, .bufferFrames = kBufferFrames,
       .rates = kRatesAVHub, .rateCount = kSupportedRateCount, .periodFrames = kZeroTimeStampPeriodFrames,
       .volume = 1.0f, .mute = 0, .pitch = kPitchNeutral, .clockSource = 0 },

@@ -8,9 +8,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "Sistem"
-        case .light: return "Terang"
-        case .dark: return "Gelap"
+        case .system: return L10n.t("Sistem")
+        case .light: return L10n.t("Terang")
+        case .dark: return L10n.t("Gelap")
         }
     }
 
@@ -88,34 +88,6 @@ struct AdaptiveScroll<Content: View>: View {
     }
 }
 
-// Pengganti segmented Picker: tab sederhana yang tampil konsisten di semua kondisi render.
-struct SegmentedTabs<T: Hashable>: View {
-    let items: [(T, String)]
-    @Binding var selection: T
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<items.count, id: \.self) { k in
-                let value = items[k].0
-                let active = selection == value
-                Button {
-                    selection = value
-                } label: {
-                    Text(items[k].1)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(active ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(active ? Style.surfaceStrong : Color.clear))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Style.surface))
-    }
-}
-
 // Tombol kecil berbentuk huruf (S, M), dengan warna aktif.
 struct ToggleChip: View {
     let label: String
@@ -172,6 +144,7 @@ struct AudioHubApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var engine = EngineController()
     @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
+    @AppStorage(L10n.storageKey) private var language = AppLanguage.en.rawValue
 
     // Mode snapshot: `AudioHub --snapshot /path/file.png` merender tampilan ke PNG lalu keluar.
     private var snapshotPath: String? {
@@ -183,6 +156,7 @@ struct AudioHubApp: App {
     var body: some Scene {
         WindowGroup("AudioHub") {
             ContentView()
+                .id(language)
                 .environmentObject(engine)
                 .environmentObject(engine.meters)
                 .frame(minWidth: 1120, minHeight: 720)
@@ -220,27 +194,25 @@ func writeSnapshot(engine: EngineController, path: String) {
 
 struct ContentView: View {
     @AppStorage("appearance") private var appearance = AppearanceMode.system.rawValue
+    @AppStorage(L10n.storageKey) private var language = AppLanguage.en.rawValue
     @EnvironmentObject var engine: EngineController
     @State private var showGraph = false
-    @State private var rightTab = 0
+
+    // Tinggi satu baris input dan satu baris matriks. Dibuat sama supaya label input sejajar dengan matriksnya.
+    private let rowHeight: CGFloat = 84
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             Divider()
             HStack(spacing: 0) {
-                inputColumn
-                    .frame(width: 280)
-                Divider()
-                routingColumn
+                mainArea
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 sideColumn
-                    .frame(width: 280)
+                    .frame(width: 260)
             }
             .frame(maxHeight: .infinity)
-            Divider()
-            outputBar
             Divider()
             statusBar
         }
@@ -250,120 +222,93 @@ struct ContentView: View {
     // MARK: Toolbar
 
     private var topBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "waveform")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Style.accent)
-                Text("AudioHub").font(.system(size: 15, weight: .semibold))
+                Text(L10n.t("AudioHub")).font(.system(size: 15, weight: .semibold))
+                Text(L10n.t("Routing Center"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
-
-            Divider().frame(height: 22)
-
-            Picker("Perangkat", selection: $engine.deviceName) {
-                ForEach(engine.devices.filter { $0.inCh > 0 && $0.outCh > 0 }, id: \.uid) { d in
-                    Text(d.name).tag(d.name)
-                }
-                if !engine.devices.contains(where: { $0.name == engine.deviceName }) {
-                    Text("\(engine.deviceName) (tidak tersedia)").tag(engine.deviceName)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 230)
-
-            Menu {
-                virtualPicker("Virtual 1", selection: $engine.virtualUID1, exclude: engine.virtualUID2)
-                virtualPicker("Virtual 2", selection: $engine.virtualUID2, exclude: engine.virtualUID1)
-            } label: {
-                Label(virtualSummary, systemImage: "rectangle.connected.to.line.below")
-            }
-            .fixedSize()
-
-            Button {
-                engine.open()
-            } label: {
-                Label("Buka", systemImage: "arrow.clockwise")
-            }
-            .help("Buka ulang perangkat dengan pengaturan di atas")
 
             Spacer()
 
-            statusPill
-
-            if engine.running {
-                Button {
-                    engine.stop()
-                } label: {
-                    Label("Hentikan", systemImage: "stop.fill")
-                }
-                .tint(Style.danger)
-                .keyboardShortcut(.defaultAction)
-            } else {
-                Button {
-                    engine.start()
-                } label: {
-                    Label("Mulai", systemImage: "play.fill")
-                }
-                .tint(Style.accent)
-                .keyboardShortcut(.defaultAction)
-            }
-
-            Menu {
-                Toggle("Sambung ulang otomatis", isOn: $engine.autoReconnect)
-                Divider()
-                Picker("Sample rate", selection: $engine.prefSampleRate) {
-                    ForEach(engine.supportedRates, id: \.self) { rate in
-                        Text(String(format: "%.1f kHz", rate / 1000)).tag(rate)
-                    }
-                }
-                Picker("Buffer", selection: $engine.prefBuffer) {
-                    ForEach(engine.bufferChoices, id: \.self) { frames in
-                        let ms = Double(frames) / engine.prefSampleRate * 1000
-                        Text(String(format: "%u frame (%.1f ms)", frames, ms)).tag(frames)
-                    }
-                }
-                Divider()
-                Picker("Tampilan", selection: $appearance) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode.rawValue)
-                    }
-                }
-                Divider()
-                Button("Perbarui daftar perangkat") { engine.refreshDevices() }
+            Button {
+                showGraph.toggle()
             } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 14))
+                Image(systemName: showGraph ? "square.grid.3x3" : "point.3.connected.trianglepath.dotted")
                     .foregroundStyle(.secondary)
             }
-            .fixedSize()
+            .buttonStyle(.plain)
+            .help(showGraph ? L10n.t("Tampilkan matriks") : L10n.t("Tampilkan graph"))
+            .disabled(!engine.isOpen)
+
+            statusPill
+            startStopButton
+            settingsMenu
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    private var virtualSummary: String {
-        switch (engine.useVirtual, engine.useVirtual2) {
-        case (true, true): return "Virtual 1 + 2"
-        case (true, false): return "Virtual 1"
-        case (false, true): return "Virtual 2"
-        default: return "Tanpa virtual"
+    // Mulai dan hentikan. Memakai gesture, bukan Button, karena Button di sini dipanggil tanpa klik saat aplikasi dibuka.
+    private var startStopButton: some View {
+        HStack(spacing: 6) {
+            Image(systemName: engine.running ? "stop.fill" : "play.fill")
+            Text(engine.running ? L10n.t("Hentikan") : L10n.t("Mulai"))
+        }
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(engine.running ? Style.danger : Style.accent))
+        .contentShape(Capsule())
+        .onTapGesture {
+            if engine.running {
+                engine.stop()
+            } else {
+                engine.start()
+            }
         }
     }
 
-    // Pemilih perangkat virtual: "Tidak ada" atau salah satu perangkat virtual yang terpasang.
-    // Perangkat yang sedang dipilih tapi tidak terpasang tetap tampil, supaya pilihan tidak hilang diam-diam.
-    @ViewBuilder
-    private func virtualPicker(_ title: String, selection: Binding<String>, exclude: String) -> some View {
-        Picker(title, selection: selection) {
-            Text("Tidak ada").tag("")
-            ForEach(engine.virtualCandidates(excluding: exclude)) { d in
-                Text(d.name).tag(d.uid)
+    // Pengaturan jarang dipakai disimpan di menu roda gigi.
+    private var settingsMenu: some View {
+        Menu {
+            Toggle(L10n.t("Sambung ulang otomatis"), isOn: $engine.autoReconnect)
+            Divider()
+            Picker(L10n.t("Sample rate"), selection: $engine.prefSampleRate) {
+                ForEach(engine.supportedRates, id: \.self) { rate in
+                    Text(String(format: "%.1f kHz", rate / 1000)).tag(rate)
+                }
             }
-            if !selection.wrappedValue.isEmpty,
-               !engine.virtualCandidates(excluding: exclude).contains(where: { $0.uid == selection.wrappedValue }) {
-                Text("\(selection.wrappedValue) (tidak tersedia)").tag(selection.wrappedValue)
+            Picker(L10n.t("Buffer"), selection: $engine.prefBuffer) {
+                ForEach(engine.bufferChoices, id: \.self) { frames in
+                    let ms = Double(frames) / engine.prefSampleRate * 1000
+                    Text(String(format: "%u frame (%.1f ms)", frames, ms)).tag(frames)
+                }
             }
+            Divider()
+            Picker(L10n.t("Tampilan"), selection: $appearance) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.label).tag(mode.rawValue)
+                }
+            }
+            Picker(L10n.t("Bahasa"), selection: $language) {
+                ForEach(AppLanguage.allCases) { lang in
+                    Text(lang.label).tag(lang.rawValue)
+                }
+            }
+            Divider()
+            Button(L10n.t("Perbarui daftar perangkat")) { engine.refreshDevices() }
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
         }
+        .fixedSize()
     }
 
     private var statusPill: some View {
@@ -371,7 +316,7 @@ struct ContentView: View {
             Circle()
                 .fill(engine.running ? Style.accent : Color.secondary)
                 .frame(width: 7, height: 7)
-            Text(engine.running ? "Berjalan" : "Berhenti")
+            Text(engine.running ? L10n.t("Berjalan") : L10n.t("Berhenti"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(engine.running ? .primary : .secondary)
         }
@@ -380,121 +325,107 @@ struct ContentView: View {
         .background(Capsule().fill(Style.surface))
     }
 
-    // MARK: Input
+    // MARK: Area utama
 
-    private var inputColumn: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle("Input", trailing: engine.isOpen ? "\(engine.inputs) kanal" : nil)
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-            if engine.isOpen {
-                AdaptiveScroll {
-                    VStack(spacing: 8) {
-                        ForEach(0..<engine.inputs, id: \.self) { i in
-                            InputRow(index: i)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
-                }
-            } else {
-                emptyState("Belum ada perangkat terbuka", "Pilih perangkat di atas, lalu tekan Buka.")
-            }
-        }
-    }
-
-    // MARK: Routing
-
-    private var routingColumn: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                SectionTitle("Routing")
-                Spacer()
-                SegmentedTabs(items: [(false, "Matriks"), (true, "Graph")], selection: $showGraph)
-                    .frame(width: 180)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-
-            if engine.isOpen && showGraph {
+    @ViewBuilder
+    private var mainArea: some View {
+        if engine.isOpen {
+            if showGraph {
                 RouteGraphView()
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-            } else if engine.isOpen {
-                AdaptiveScroll([.horizontal, .vertical]) {
-                    RouteMatrix()
-                        .padding(16)
-                }
-                legend
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(16)
             } else {
-                emptyState("Routing belum tersedia", "Buka perangkat untuk mengatur koneksi.")
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        inputLabels
+                            .frame(width: 200)
+                        Divider()
+                        pairMatrix
+                            .frame(maxWidth: .infinity)
+                    }
+                    Divider()
+                    HStack(alignment: .top, spacing: 0) {
+                        Color.clear
+                            .frame(width: 200)
+                        Divider()
+                        outputStrips
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(height: 210)
+                }
+            }
+        } else {
+            emptyState(L10n.t("Belum ada perangkat terbuka"), L10n.t("Pilih perangkat di kanan, lalu tekan Buka."))
+        }
+    }
+
+    private var inputLabels: some View {
+        let pairs = engine.channelPairs(output: false)
+        return VStack(spacing: 0) {
+            ForEach(pairs, id: \.self) { pair in
+                InputGroupLabel(indices: pair)
+                    .frame(height: rowHeight)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var pairMatrix: some View {
+        let ins = engine.channelPairs(output: false)
+        let outs = engine.channelPairs(output: true)
+        return VStack(spacing: 0) {
+            ForEach(ins, id: \.self) { inPair in
+                HStack(spacing: 0) {
+                    ForEach(outs, id: \.self) { outPair in
+                        PairCell(inputs: inPair, outputs: outPair)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(height: rowHeight)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var outputStrips: some View {
+        let pairs = engine.channelPairs(output: true)
+        return HStack(alignment: .top, spacing: 0) {
+            ForEach(pairs, id: \.self) { pair in
+                OutputPairStrip(indices: pair)
+                    .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private var legend: some View {
-        HStack(spacing: 14) {
-            legendItem(Style.accent, "Tersambung")
-            legendItem(Style.surfaceStrong, "Terputus")
-            legendItem(Color.black.opacity(0.35), "Tidak tersedia (virtual → virtual, perangkat sama)")
-            Spacer()
-            Text("Klik kanan untuk send").font(.caption2).foregroundStyle(.tertiary)
+    private func emptyState(_ title: String, _ subtitle: String) -> some View {
+        VStack(spacing: 4) {
+            Text(title).font(.callout.weight(.medium))
+            Text(subtitle).font(.caption).foregroundStyle(.secondary)
         }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-    }
-
-    private func legendItem(_ color: Color, _ text: String) -> some View {
-        HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 12, height: 9)
-            Text(text)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
     }
 
     // MARK: Samping kanan
 
     private var sideColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SegmentedTabs(items: [(0, "Preset"), (1, "Perangkat"), (2, "Diagnostik")], selection: $rightTab)
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-
-            AdaptiveScroll {
-                VStack(alignment: .leading, spacing: 16) {
-                    switch rightTab {
-                    case 1: DevicePanel()
-                    case 2: DiagnosticsPanel()
-                    default: PresetPanel()
+        AdaptiveScroll {
+            VStack(alignment: .leading, spacing: 18) {
+                PresetPanel()
+                Divider()
+                DeviceSettingsSection()
+                Divider()
+                DisclosureGroup(L10n.t("Lanjutan")) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        TemplateSection()
+                        DevicePanel()
+                        DiagnosticsPanel()
                     }
+                    .padding(.top, 8)
                 }
-                .padding(14)
             }
+            .padding(14)
         }
         .frame(maxHeight: .infinity, alignment: .top)
-    }
-
-    // MARK: Output
-
-    private var outputBar: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            if engine.isOpen {
-                ForEach(0..<engine.outputs, id: \.self) { j in
-                    OutputStrip(index: j)
-                        .frame(maxWidth: .infinity)
-                    if j < engine.outputs - 1 { Divider() }
-                }
-            } else {
-                emptyState("Output", "Muncul setelah perangkat dibuka.")
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(height: 226)
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
     }
 
     // MARK: Status
@@ -511,14 +442,346 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
     }
+}
 
-    private func emptyState(_ title: String, _ subtitle: String) -> some View {
-        VStack(spacing: 4) {
-            Text(title).font(.callout.weight(.medium))
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+// Ikon kelompok: headphone atau mikrofon untuk perangkat fisik, panah loop untuk Loopback, dan antena untuk VC.
+func groupIconName(_ index: Int, output: Bool, engine: EngineController) -> String {
+    let owner = engine.channelOwner(index, output: output).owner
+    if owner == 0 { return output ? "headphones" : "mic.fill" }
+    if owner == 3 { return "arrow.triangle.2.circlepath" }
+    if owner == 4 { return "music.note" }
+    return "dot.radiowaves.left.and.right"
+}
+
+// Panel satu pasangan input. Hanya memantau: meter selalu aktif. Suara diteruskan lewat sel matriks, bukan dari sini.
+struct InputGroupLabel: View {
+    let indices: [Int]
+    @EnvironmentObject var engine: EngineController
+    @State private var showDetail = false
+
+    var body: some View {
+        let first = indices[0]
+        let allMuted = indices.allSatisfy { engine.mutes[$0] }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: groupIconName(first, output: false, engine: engine))
+                    .foregroundStyle(.secondary)
+                Text(engine.pairTitle(indices, output: false))
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if allMuted {
+                    Text(L10n.t("BISU"))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Style.danger)
+                }
+            }
+            VStack(spacing: 3) {
+                ForEach(indices, id: \.self) { i in
+                    InputMeter(index: i)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(20)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contextMenu {
+            Button(allMuted ? L10n.t("Batalkan bisu") : L10n.t("Bisukan kanal")) {
+                for i in indices { engine.setMute(i, !allMuted) }
+            }
+            Button(L10n.t("Atur kanal…")) { showDetail = true }
+        }
+        .popover(isPresented: $showDetail, arrowEdge: .trailing) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(indices, id: \.self) { i in
+                    InputRow(index: i)
+                }
+            }
+            .padding(8)
+            .frame(width: 340)
+        }
+        .overlay(alignment: .bottom) { Divider() }
+    }
+}
+
+// Sel matriks untuk satu pasangan input dan satu pasangan output. Mengatur semua route di antara keduanya.
+struct PairCell: View {
+    let inputs: [Int]
+    let outputs: [Int]
+    @EnvironmentObject var engine: EngineController
+
+    var body: some View {
+        let allowed = engine.pairAllowed(inputs, outputs)
+        let on = engine.pairRouted(inputs, outputs)
+        let title = "\(engine.pairTitle(inputs, output: false)) → \(engine.pairTitle(outputs, output: true))"
+        Button {
+            engine.setPairRoute(inputs, outputs, !on)
+        } label: {
+            ZStack {
+                Rectangle()
+                    .fill(allowed ? Style.surface : Color.black.opacity(0.35))
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(on ? Style.accent : Color.clear)
+                    .padding(6)
+            }
+            .overlay(Rectangle().stroke(Style.hairline, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!allowed)
+        .contextMenu {
+            Button(L10n.t("Putuskan koneksi")) { engine.setPairRoute(inputs, outputs, false) }
+        }
+        .help(allowed ? title : "Aktifkan output perangkat virtual ini dulu")
+    }
+}
+
+// Strip satu pasangan output, seperti HP Out 1/2. Fader dan M berlaku untuk kedua kanal pasangan.
+struct OutputPairStrip: View {
+    let indices: [Int]
+    @EnvironmentObject var engine: EngineController
+    @State private var showDetail = false
+
+    var body: some View {
+        let first = indices[0]
+        let muted = engine.outputMutes[first]
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: groupIconName(first, output: true, engine: engine))
+                    .foregroundStyle(.secondary)
+                Text(engine.pairTitle(indices, output: true))
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            }
+
+            HStack(alignment: .center, spacing: 10) {
+                VerticalFader(value: Binding(get: { engine.outputGains[first] },
+                                             set: { v in for j in indices { engine.setOutputGain(j, v) } }))
+                HStack(spacing: 4) {
+                    ForEach(indices, id: \.self) { j in
+                        VStack(spacing: 4) {
+                            ClipDot(output: j)
+                            OutputMeter(index: j)
+                        }
+                    }
+                }
+            }
+            .frame(height: 130)
+
+            HStack(spacing: 2) {
+                TextField(L10n.t("0"), value: Binding(get: { engine.outputGains[first] },
+                                              set: { v in
+                                                  let clamped = min(12, max(-60, v))
+                                                  for j in indices { engine.setOutputGain(j, clamped) }
+                                              }),
+                          format: .number.precision(.fractionLength(1)))
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .font(.system(size: 10).monospacedDigit())
+                    .frame(width: 54)
+                Text(L10n.t("dB")).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 6) {
+                ToggleChip(label: "M", on: muted, tint: Style.danger, help: L10n.t("Bisukan output")) {
+                    for j in indices { engine.setOutputMute(j, !muted) }
+                }
+                Button(L10n.t("0 dB")) {
+                    for j in indices { engine.setOutputGain(j, 0) }
+                }
+                .font(.system(size: 10, weight: .medium))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Button {
+                    showDetail = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.t("Limiter dan rekam"))
+                .popover(isPresented: $showDetail, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(indices, id: \.self) { j in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(engine.outLabel(j)).font(.caption.weight(.semibold))
+                                HStack {
+                                    LimiterButton(index: j)
+                                    RecordButton(index: j)
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .frame(width: 260, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+    }
+}
+
+// Pengaturan perangkat dan parameter audio, setara ASIO Settings di Routing Center.
+struct DeviceSettingsSection: View {
+    @EnvironmentObject var engine: EngineController
+    @EnvironmentObject var meters: Meters
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionTitle(L10n.t("Pengaturan Perangkat"))
+
+            pickerRow(L10n.t("Fisik")) {
+                Picker(L10n.t("Fisik"), selection: $engine.deviceName) {
+                    ForEach(engine.devices.filter { $0.inCh > 0 && $0.outCh > 0 }, id: \.uid) { d in
+                        Text(d.name).tag(d.name)
+                    }
+                    if !engine.devices.contains(where: { $0.name == engine.deviceName }) {
+                        Text(L10n.f("%@ (tidak tersedia)", engine.deviceName)).tag(engine.deviceName)
+                    }
+                }
+            }
+            pickerRow(L10n.t("VC 1/2")) {
+                virtualPicker(L10n.t("VC 1/2"), selection: $engine.virtualUID1, exclude: [engine.virtualUID2, engine.virtualUID3])
+            }
+            pickerRow(L10n.t("VC 3/4")) {
+                virtualPicker(L10n.t("VC 3/4"), selection: $engine.virtualUID2, exclude: [engine.virtualUID1, engine.virtualUID3])
+            }
+            pickerRow(L10n.t("Loopback")) {
+                virtualPicker(L10n.t("Loopback 1/2"), selection: $engine.virtualUID3, exclude: [engine.virtualUID1, engine.virtualUID2])
+            }
+
+            Button {
+                engine.open()
+            } label: {
+                Label(L10n.t("Buka"), systemImage: "arrow.clockwise")
+            }
+            .help(L10n.t("Buka ulang perangkat dengan pengaturan di atas"))
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                SectionTitle(L10n.t("Aplikasi (tangkap audio)"))
+                Text(L10n.t("Pilih aplikasi yang audionya dijadikan sumber input. Berlaku setelah Buka. Saat pertama kali, macOS meminta izin Audio Capture."))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                let apps = engine.audioProcesses()
+                if apps.isEmpty {
+                    Text(L10n.t("Belum ada aplikasi yang memutar audio."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(apps) { p in
+                    Toggle(isOn: Binding(get: { engine.tapBundleIDs.contains(p.bundleID) },
+                                         set: { on in
+                                             var list = engine.tapBundleIDs.filter { $0 != p.bundleID }
+                                             if on { list.append(p.bundleID) }
+                                             engine.tapBundleIDs = list
+                                         })) {
+                        HStack(spacing: 6) {
+                            Text(p.name).font(.caption)
+                            if p.isOutputting {
+                                Circle().fill(Style.accent).frame(width: 6, height: 6)
+                            }
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    if engine.tapBundleIDs.contains(p.bundleID) {
+                        Toggle(isOn: Binding(get: { engine.tapIsolateBundleIDs.contains(p.bundleID) },
+                                             set: { on in
+                                                 var list = engine.tapIsolateBundleIDs.filter { $0 != p.bundleID }
+                                                 if on { list.append(p.bundleID) }
+                                                 engine.tapIsolateBundleIDs = list
+                                             })) {
+                            Text(L10n.t("Isolasi")).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .toggleStyle(.checkbox)
+                        .padding(.leading, 18)
+                        .help(L10n.t("Isolasi: audio aplikasi tidak lagi keluar di output asli, hanya lewat AudioHub. Berlaku setelah Buka."))
+                    }
+                }
+                if !engine.tapBundleIDs.isEmpty && !engine.useVirtual {
+                    Text(L10n.t("Tangkap aplikasi butuh VC 1/2 dipilih."))
+                        .font(.caption2)
+                        .foregroundStyle(Style.danger)
+                }
+            }
+
+            Divider()
+
+            row(L10n.t("Status"), engine.running ? L10n.t("Berjalan") : (engine.isOpen ? L10n.t("Berhenti") : L10n.t("Belum dibuka")))
+            row(L10n.t("Sample rate"), meters.sampleRate > 0 ? String(format: "%.0f Hz", meters.sampleRate) : "—")
+            row(L10n.t("Buffer"), meters.bufferFrames > 0 ? "\(meters.bufferFrames) frame" : "—")
+            row(L10n.t("Latensi input"), latencyText(meters.inputLatencyFrames, meters.sampleRate))
+            row(L10n.t("Latensi output"), latencyText(meters.outputLatencyFrames, meters.sampleRate))
+        }
+    }
+
+    // Pemilih perangkat virtual: L10n.t("Tidak ada") atau salah satu perangkat virtual yang terpasang.
+    // Perangkat yang sedang dipilih tapi tidak terpasang tetap tampil, supaya pilihan tidak hilang diam-diam.
+    @ViewBuilder
+    private func virtualPicker(_ title: String, selection: Binding<String>, exclude: [String]) -> some View {
+        Picker(title, selection: selection) {
+            Text(L10n.t("Tidak ada")).tag("")
+            ForEach(engine.virtualCandidates(excluding: exclude)) { d in
+                Text(d.name).tag(d.uid)
+            }
+            if !selection.wrappedValue.isEmpty,
+               !engine.virtualCandidates(excluding: exclude).contains(where: { $0.uid == selection.wrappedValue }) {
+                Text(L10n.f("%@ (tidak tersedia)", selection.wrappedValue)).tag(selection.wrappedValue)
+            }
+        }
+    }
+
+    private func pickerRow<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .leading)
+            content()
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).font(.caption.monospacedDigit())
+        }
+    }
+}
+
+// Template skenario. Dipindah dari panel preset agar panel utama tetap ringkas.
+struct TemplateSection: View {
+    @EnvironmentObject var engine: EngineController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(L10n.t("Template"))
+            Text(L10n.t("Mengatur routing dan DSP mic sesuai skenario."))
+                .font(.caption).foregroundStyle(.secondary)
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    templateButton(L10n.t("Podcast"))
+                    templateButton(L10n.t("Streaming"))
+                }
+                GridRow {
+                    templateButton(L10n.t("Online Meeting"))
+                    templateButton(L10n.t("Recording"))
+                }
+            }
+            Button(L10n.t("Reset ke default")) { engine.resetDefaults() }
+                .disabled(!engine.isOpen)
+        }
+    }
+
+    private func templateButton(_ name: String) -> some View {
+        Button(name) { engine.applyTemplate(name) }
+            .frame(maxWidth: .infinity)
+            .disabled(!engine.isOpen)
     }
 }
 
@@ -544,9 +807,9 @@ struct InputRow: View {
                     .onTapGesture {
                         engine.updateInputFx(index) { $0.colorIndex = ($0.colorIndex + 1) % Style.channelColors.count }
                     }
-                    .help("Klik untuk mengganti warna")
+                    .help(L10n.t("Klik untuk mengganti warna"))
 
-                TextField("Nama", text: Binding(get: { engine.inLabel(index) },
+                TextField(L10n.t("Nama"), text: Binding(get: { engine.inLabel(index) },
                                                 set: { engine.setInputName(index, $0) }))
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, weight: .medium))
@@ -562,12 +825,12 @@ struct InputRow: View {
                             .foregroundStyle(engine.linkedPairs[pair] ? Style.accent : .secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Tautkan pasangan stereo")
+                    .help(L10n.t("Tautkan pasangan stereo"))
                 }
                 ToggleChip(label: "S", on: engine.soloInputs.contains(index), tint: Style.warning,
-                           help: "Solo: hanya memengaruhi monitor") { engine.toggleSolo(index) }
+                           help: L10n.t("Solo: hanya memengaruhi monitor")) { engine.toggleSolo(index) }
                 ToggleChip(label: "M", on: engine.mutes[index], tint: Style.danger,
-                           help: "Bisukan kanal") { engine.setMute(index, !engine.mutes[index]) }
+                           help: L10n.t("Bisukan kanal")) { engine.setMute(index, !engine.mutes[index]) }
                 DynamicsButton(index: index)
                 if let host = fxChainHost {
                     let count = host.count(index)
@@ -586,7 +849,7 @@ struct InputRow: View {
             }
 
             HStack(spacing: 8) {
-                Text("Gain").font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
+                Text(L10n.t("Gain")).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
                 Slider(value: Binding(get: { engine.gains[index] }, set: { engine.setGain(index, $0) }), in: -60...12)
                     .controlSize(.small)
                     .tint(Style.accent)
@@ -598,7 +861,7 @@ struct InputRow: View {
             }
 
             HStack(spacing: 8) {
-                Text("Pan").font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
+                Text(L10n.t("Pan")).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
                 Slider(value: Binding(get: { engine.fx[index].pan }, set: { engine.setPan(index, $0) }), in: -1...1)
                     .controlSize(.small)
                     .tint(Style.accent)
@@ -624,81 +887,6 @@ struct InputRow: View {
     }
 }
 
-// MARK: - Matriks
-
-struct RouteMatrix: View {
-    @EnvironmentObject var engine: EngineController
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Color.clear.frame(width: 130, height: 22)
-                ForEach(0..<engine.outputs, id: \.self) { j in
-                    Text(engine.outLabel(j))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(j >= engine.physOut ? Color.secondary.opacity(0.8) : .secondary)
-                        .lineLimit(1)
-                        .frame(width: 84)
-                        .padding(.leading, j == engine.physOut && engine.physOut > 0 ? 6 : 0)
-                }
-            }
-            ForEach(0..<engine.inputs, id: \.self) { i in
-                HStack(spacing: 6) {
-                    Text(engine.inLabel(i))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(width: 130, alignment: .trailing)
-                    ForEach(0..<engine.outputs, id: \.self) { j in
-                        RouteCell(input: i, output: j)
-                            .padding(.leading, j == engine.physOut && engine.physOut > 0 ? 6 : 0)
-                    }
-                }
-                .padding(.top, i == engine.physIn && engine.physIn > 0 ? 6 : 0)
-            }
-        }
-    }
-}
-
-struct RouteCell: View {
-    let input: Int
-    let output: Int
-    @EnvironmentObject var engine: EngineController
-
-    var body: some View {
-        let blocked = !engine.routeAllowed(input, output)
-        let on = engine.routes[input][output]
-        let send = engine.sends[input][output]
-
-        Button {
-            engine.setRoute(input, output, !on)
-        } label: {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(blocked ? Color.black.opacity(0.35) : (on ? Style.accent : Style.surface))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(on ? Style.accent.opacity(0.9) : Style.hairline, lineWidth: 1)
-                )
-                .overlay(
-                    Text(on && send != 0 ? String(format: "%.0f", send) : "")
-                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.black.opacity(0.75))
-                )
-                .frame(width: 84, height: 34)
-        }
-        .buttonStyle(.plain)
-        .disabled(blocked)
-        .contextMenu {
-            Button("Send 0 dB") { engine.setSend(input, output, db: 0); engine.setRoute(input, output, true) }
-            Button("Send −6 dB") { engine.setSend(input, output, db: -6); engine.setRoute(input, output, true) }
-            Button("Send −12 dB") { engine.setSend(input, output, db: -12); engine.setRoute(input, output, true) }
-            Divider()
-            Button("Matikan koneksi") { engine.setRoute(input, output, false) }
-        }
-        .help(blocked ? "Virtual → virtual dalam perangkat yang sama tidak bisa dihubungkan" : "\(engine.inLabel(input)) → \(engine.outLabel(output))")
-    }
-}
-
 // MARK: - Panel samping
 
 struct PresetPanel: View {
@@ -710,23 +898,23 @@ struct PresetPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Preset tersimpan")
-                Picker("", selection: Binding(get: { engine.currentPreset },
+                SectionTitle(L10n.t("Routing Preset"))
+                Picker(L10n.t(""), selection: Binding(get: { engine.currentPreset },
                                               set: { name in if !name.isEmpty { engine.loadPreset(name) } })) {
-                    Text("Pilih preset").tag("")
+                    Text(L10n.t("Pilih preset")).tag("")
                     ForEach(engine.presets, id: \.self) { Text($0).tag($0) }
                 }
                 .labelsHidden()
                 .disabled(!engine.isOpen)
                 HStack {
-                    Button("Muat") { engine.loadPreset(engine.currentPreset) }
+                    Button(L10n.t("Muat")) { engine.loadPreset(engine.currentPreset) }
                         .disabled(engine.currentPreset.isEmpty)
-                    Button("Hapus", role: .destructive) { confirmDelete = true }
+                    Button(L10n.t("Hapus"), role: .destructive) { confirmDelete = true }
                         .disabled(engine.currentPreset.isEmpty)
-                        .confirmationDialog("Hapus preset \"\(engine.currentPreset)\"?",
+                        .confirmationDialog(L10n.f("Hapus preset \"%@\"?", engine.currentPreset),
                                             isPresented: $confirmDelete, titleVisibility: .visible) {
-                            Button("Hapus", role: .destructive) { engine.deletePreset(engine.currentPreset) }
-                            Button("Batal", role: .cancel) {}
+                            Button(L10n.t("Hapus"), role: .destructive) { engine.deletePreset(engine.currentPreset) }
+                            Button(L10n.t("Batal"), role: .cancel) {}
                         }
                     Spacer()
                 }
@@ -735,11 +923,11 @@ struct PresetPanel: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Simpan sebagai")
+                SectionTitle(L10n.t("Simpan sebagai"))
                 HStack {
-                    TextField("Nama preset", text: $newName)
+                    TextField(L10n.t("Nama preset"), text: $newName)
                         .textFieldStyle(.roundedBorder)
-                    Button("Simpan") {
+                    Button(L10n.t("Simpan")) {
                         if engine.presetExists(newName) {
                             overwriteCandidate = newName
                         } else {
@@ -748,49 +936,23 @@ struct PresetPanel: View {
                         }
                     }
                     .disabled(!engine.isOpen || engine.presetNameProblem(newName) != nil)
-                    .confirmationDialog("Timpa preset \"\(overwriteCandidate ?? "")\"?",
+                    .confirmationDialog(L10n.f("Timpa preset \"%@\"?", overwriteCandidate ?? ""),
                                         isPresented: Binding(get: { overwriteCandidate != nil },
                                                              set: { if !$0 { overwriteCandidate = nil } }),
                                         titleVisibility: .visible) {
-                        Button("Timpa", role: .destructive) {
+                        Button(L10n.t("Timpa"), role: .destructive) {
                             engine.savePreset(named: overwriteCandidate ?? "")
                             overwriteCandidate = nil
                             newName = ""
                         }
-                        Button("Batal", role: .cancel) { overwriteCandidate = nil }
+                        Button(L10n.t("Batal"), role: .cancel) { overwriteCandidate = nil }
                     }
                 }
                 if !newName.trimmingCharacters(in: .whitespaces).isEmpty, let problem = engine.presetNameProblem(newName) {
                     Text(problem).font(.caption2).foregroundStyle(Style.danger)
                 }
             }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Template")
-                Text("Mengatur routing dan DSP mic sesuai skenario.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                    GridRow {
-                        templateButton("Podcast")
-                        templateButton("Streaming")
-                    }
-                    GridRow {
-                        templateButton("Online Meeting")
-                        templateButton("Recording")
-                    }
-                }
-                Button("Reset ke default") { engine.resetDefaults() }
-                    .disabled(!engine.isOpen)
-            }
         }
-    }
-
-    private func templateButton(_ name: String) -> some View {
-        Button(name) { engine.applyTemplate(name) }
-            .frame(maxWidth: .infinity)
-            .disabled(!engine.isOpen)
     }
 }
 
@@ -807,7 +969,7 @@ struct DevicePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Peran perangkat")
+                SectionTitle(L10n.t("Peran perangkat"))
                 ForEach(engine.currentBindings(), id: \.role) { b in
                     let ok = b.deviceUID.isEmpty || engine.devices.contains(where: { $0.uid == b.deviceUID })
                     HStack(spacing: 8) {
@@ -820,7 +982,7 @@ struct DevicePanel: View {
                     }
                 }
                 if !engine.missingRoles.isEmpty {
-                    Text("Tidak tersedia: \(engine.missingRoles.joined(separator: ", ")). Scene tidak diganti otomatis.")
+                    Text(L10n.f("Tidak tersedia: %@. Scene tidak diganti otomatis.", engine.missingRoles.joined(separator: ", ")))
                         .font(.caption2)
                         .foregroundStyle(Style.danger)
                 }
@@ -828,27 +990,15 @@ struct DevicePanel: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Parameter audio")
-                row("Sample rate", meters.sampleRate > 0 ? String(format: "%.0f Hz", meters.sampleRate) : "—")
-                row("Buffer", meters.bufferFrames > 0 ? "\(meters.bufferFrames) frame" : "—")
-                row("Latensi buffer", latencyText(meters.bufferFrames, meters.sampleRate))
-                row("Latensi input perangkat", latencyText(meters.inputLatencyFrames, meters.sampleRate))
-                row("Latensi output perangkat", latencyText(meters.outputLatencyFrames, meters.sampleRate))
-                row("Dropout", "\(meters.dropouts)")
-            }
-
-            Divider()
-
             if !engine.hwVolume.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    SectionTitle("Kontrol perangkat")
+                    SectionTitle(L10n.t("Kontrol perangkat"))
                     ForEach(engine.hwVolume.indices, id: \.self) { j in
                         HStack(spacing: 8) {
                             Text("Output \(j + 1)").font(.caption).frame(width: 60, alignment: .leading)
                             Slider(value: Binding(get: { Double(engine.hwVolume[j]) },
                                                   set: { engine.setHwVolume(output: j, Float($0)) }), in: 0...1)
-                            Toggle("Bisukan", isOn: Binding(get: { engine.hwMute[j] },
+                            Toggle(L10n.t("Bisukan"), isOn: Binding(get: { engine.hwMute[j] },
                                                             set: { engine.setHwMute(output: j, $0) }))
                                 .toggleStyle(.checkbox)
                                 .font(.caption)
@@ -858,12 +1008,6 @@ struct DevicePanel: View {
                 Divider()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Latensi loopback terukur")
-                row("PS22, buffer 512", "29 ms")
-                Text("Hasil tes loopback sebelumnya, bukan pengukuran sesi ini.")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -884,26 +1028,26 @@ struct DiagnosticsPanel: View {
         let clips = meters.inClip.filter { $0 }.count + meters.outClip.filter { $0 }.count
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Ringkasan")
-                row("Engine", engine.running ? "Berjalan" : "Berhenti")
-                row("Perangkat", engine.isOpen ? "Terbuka" : "—")
-                row("Scene aktif", engine.currentPreset.isEmpty ? "tanpa preset" : engine.currentPreset)
-                row("Clip", "\(clips)")
-                row("Dropout", "\(meters.dropouts)")
-                row("Solo", engine.soloInputs.isEmpty ? "—" : "\(engine.soloInputs.count) kanal")
-                row("Rekaman", engine.recordingOutput == nil ? "—" : "berjalan")
+                SectionTitle(L10n.t("Ringkasan"))
+                row(L10n.t("Engine"), engine.running ? L10n.t("Berjalan") : L10n.t("Berhenti"))
+                row(L10n.t("Perangkat"), engine.isOpen ? "Terbuka" : "—")
+                row(L10n.t("Scene aktif"), engine.currentPreset.isEmpty ? "tanpa preset" : engine.currentPreset)
+                row(L10n.t("Clip"), "\(clips)")
+                row(L10n.t("Dropout"), "\(meters.dropouts)")
+                row(L10n.t("Solo"), engine.soloInputs.isEmpty ? "—" : L10n.f("%d kanal", engine.soloInputs.count))
+                row(L10n.t("Rekaman"), engine.recordingOutput == nil ? "—" : "berjalan")
             }
 
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                SectionTitle("Ekspor")
-                Toggle("Sembunyikan nama dan UID perangkat", isOn: $engine.redactDiagnostics)
+                SectionTitle(L10n.t("Ekspor"))
+                Toggle(L10n.t("Sembunyikan nama dan UID perangkat"), isOn: $engine.redactDiagnostics)
                     .font(.caption)
                     .toggleStyle(.checkbox)
-                Button("Simpan laporan diagnostik") { engine.exportDiagnostics() }
+                Button(L10n.t("Simpan laporan diagnostik")) { engine.exportDiagnostics() }
                     .disabled(!engine.isOpen)
-                Text("Laporan berisi routing, gain, dan status. Aman dibagikan bila nama perangkat disembunyikan.")
+                Text(L10n.t("Laporan berisi routing, gain, dan status. Aman dibagikan bila nama perangkat disembunyikan."))
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
@@ -915,51 +1059,6 @@ struct DiagnosticsPanel: View {
             Spacer()
             Text(value).font(.caption.monospacedDigit()).lineLimit(1)
         }
-    }
-}
-
-// MARK: - Output
-
-struct OutputStrip: View {
-    let index: Int
-    @EnvironmentObject var engine: EngineController
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Text(engine.outLabel(index))
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-            Text("\(engine.sourceCount(index)) sumber")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            HStack(alignment: .center, spacing: 10) {
-                VerticalFader(value: Binding(get: { engine.outputGains[index] },
-                                             set: { engine.setOutputGain(index, $0) }))
-                VStack(spacing: 4) {
-                    ClipDot(output: index)
-                    OutputMeter(index: index)
-                }
-            }
-            .frame(height: 150)
-
-            Text(String(format: "%+.1f dB", engine.outputGains[index]))
-                .font(.system(size: 10).monospacedDigit())
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 6) {
-                ToggleChip(label: "M", on: engine.outputMutes[index], tint: Style.danger,
-                           help: "Bisukan output") { engine.setOutputMute(index, !engine.outputMutes[index]) }
-                Button("0 dB") { engine.setOutputGain(index, 0) }
-                    .font(.system(size: 10, weight: .medium))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                LimiterButton(index: index)
-                RecordButton(index: index)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
     }
 }
 
@@ -978,7 +1077,7 @@ struct DynamicsButton: View {
                 .foregroundStyle(hasActiveDSP ? Style.accent : .secondary)
         }
         .buttonStyle(.plain)
-        .help("Dinamika, EQ, delay, dan plugin")
+        .help(L10n.t("Dinamika, EQ, delay, dan plugin"))
         .popover(isPresented: $show, arrowEdge: .trailing) {
             InputDynamicsView(index: index)
                 .environmentObject(engine)
@@ -1001,11 +1100,11 @@ struct InputDynamicsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(engine.inLabel(index)).font(.headline).padding(.horizontal, 16).padding(.top, 14)
             TabView {
-                gateTab.tabItem { Text("Gate") }
-                eqTab.tabItem { Text("EQ") }
-                compTab.tabItem { Text("Kompresor") }
-                delayTab.tabItem { Text("Delay") }
-                pluginTab.tabItem { Text("Plugin") }
+                gateTab.tabItem { Text(L10n.t("Gate")) }
+                eqTab.tabItem { Text(L10n.t("EQ")) }
+                compTab.tabItem { Text(L10n.t("Kompresor")) }
+                delayTab.tabItem { Text(L10n.t("Delay")) }
+                pluginTab.tabItem { Text(L10n.t("Plugin")) }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
@@ -1016,7 +1115,7 @@ struct InputDynamicsView: View {
 
     private var gateTab: some View {
         Form {
-            Toggle("Aktifkan gate", isOn: Binding(get: { f.gate.enabled },
+            Toggle(L10n.t("Aktifkan gate"), isOn: Binding(get: { f.gate.enabled },
                 set: { v in engine.updateInputFx(index) { $0.gate.enabled = v } }))
             param("Threshold", f.gate.thresholdDb, -80...0, "dB") { v in engine.updateInputFx(index) { $0.gate.thresholdDb = v } }
             param("Release", f.gate.releaseMs, 5...1000, "ms") { v in engine.updateInputFx(index) { $0.gate.releaseMs = v } }
@@ -1027,7 +1126,7 @@ struct InputDynamicsView: View {
 
     private var eqTab: some View {
         Form {
-            Toggle("Aktifkan EQ", isOn: Binding(get: { f.eq.enabled },
+            Toggle(L10n.t("Aktifkan EQ"), isOn: Binding(get: { f.eq.enabled },
                 set: { v in engine.updateInputFx(index) { $0.eq.enabled = v } }))
             param("Low shelf", f.eq.lowDb, -15...15, "dB") { v in engine.updateInputFx(index) { $0.eq.lowDb = v } }
             param("Mid peak", f.eq.midDb, -15...15, "dB") { v in engine.updateInputFx(index) { $0.eq.midDb = v } }
@@ -1038,15 +1137,15 @@ struct InputDynamicsView: View {
 
     private var compTab: some View {
         Form {
-            Toggle("Aktifkan kompresor", isOn: Binding(get: { f.comp.enabled },
+            Toggle(L10n.t("Aktifkan kompresor"), isOn: Binding(get: { f.comp.enabled },
                 set: { v in engine.updateInputFx(index) { $0.comp.enabled = v } }))
             param("Threshold", f.comp.thresholdDb, -60...0, "dB") { v in engine.updateInputFx(index) { $0.comp.thresholdDb = v } }
             param("Rasio", f.comp.ratio, 1...20, ":1") { v in engine.updateInputFx(index) { $0.comp.ratio = v } }
             param("Knee", f.comp.kneeDb, 0...12, "dB") { v in engine.updateInputFx(index) { $0.comp.kneeDb = v } }
             param("Makeup", f.comp.makeupDb, 0...24, "dB") { v in engine.updateInputFx(index) { $0.comp.makeupDb = v } }
-            Picker("Sidechain", selection: Binding(get: { f.comp.sidechainInput },
+            Picker(L10n.t("Sidechain"), selection: Binding(get: { f.comp.sidechainInput },
                 set: { v in engine.updateInputFx(index) { $0.comp.sidechainInput = v } })) {
-                Text("Tanpa sidechain").tag(-1)
+                Text(L10n.t("Tanpa sidechain")).tag(-1)
                 ForEach(0..<engine.inputs, id: \.self) { k in
                     if k != index { Text(engine.inLabel(k)).tag(k) }
                 }
@@ -1057,10 +1156,10 @@ struct InputDynamicsView: View {
 
     private var delayTab: some View {
         Form {
-            Toggle("Aktifkan delay", isOn: Binding(get: { f.delay.enabled },
+            Toggle(L10n.t("Aktifkan delay"), isOn: Binding(get: { f.delay.enabled },
                 set: { v in engine.updateInputFx(index) { $0.delay.enabled = v } }))
             param("Waktu", f.delay.delayMs, 0...1000, "ms") { v in engine.updateInputFx(index) { $0.delay.delayMs = v } }
-            Text("Delay menambah latensi sebesar waktunya.").font(.caption).foregroundStyle(.secondary)
+            Text(L10n.t("Delay menambah latensi sebesar waktunya.")).font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }
@@ -1069,16 +1168,16 @@ struct InputDynamicsView: View {
         Form {
             if let host = fxChainHost {
                 // Di Studio, plugin dikelola lewat rantai FX (beberapa plugin per track).
-                Button("Buka Rantai FX…") { host.open(index) }
-                Text("Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter.")
+                Button(L10n.t("Buka Rantai FX…")) { host.open(index) }
+                Text(L10n.t("Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Picker("Audio Unit", selection: Binding(get: { f.insert },
+                Picker(L10n.t("Audio Unit"), selection: Binding(get: { f.insert },
                     set: { engine.setInsert(index, $0) })) {
-                    Text("Tanpa plugin").tag("")
+                    Text(L10n.t("Tanpa plugin")).tag("")
                     ForEach(engine.effectNames, id: \.self) { Text($0).tag($0) }
                 }
-                Text("Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi.")
+                Text(L10n.t("Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi."))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -1111,7 +1210,7 @@ struct LimiterButton: View {
 
     var body: some View {
         let on = engine.outFx.indices.contains(index) && engine.outFx[index].enabled
-        Button("Limiter") { show = true }
+        Button(L10n.t("Limiter")) { show = true }
             .font(.system(size: 10, weight: .medium))
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -1119,9 +1218,9 @@ struct LimiterButton: View {
             .popover(isPresented: $show, arrowEdge: .top) {
                 let f = engine.outFx[index]
                 Form {
-                    Toggle("Aktifkan limiter", isOn: Binding(get: { f.enabled },
+                    Toggle(L10n.t("Aktifkan limiter"), isOn: Binding(get: { f.enabled },
                         set: { v in engine.updateOutputFx(index) { $0.enabled = v } }))
-                    LabeledContent("Ceiling") {
+                    LabeledContent(L10n.t("Ceiling")) {
                         HStack {
                             Slider(value: Binding(get: { f.ceilingDb }, set: { v in engine.updateOutputFx(index) { $0.ceilingDb = v } }),
                                    in: -12...0).frame(width: 160)
@@ -1129,7 +1228,7 @@ struct LimiterButton: View {
                                 .frame(width: 60, alignment: .trailing)
                         }
                     }
-                    LabeledContent("Lookahead") {
+                    LabeledContent(L10n.t("Lookahead")) {
                         HStack {
                             Slider(value: Binding(get: { f.lookaheadMs }, set: { v in engine.updateOutputFx(index) { $0.lookaheadMs = v } }),
                                    in: 0...20).frame(width: 160)
@@ -1137,7 +1236,7 @@ struct LimiterButton: View {
                                 .frame(width: 60, alignment: .trailing)
                         }
                     }
-                    Text("Lookahead menunda sinyal supaya batas tidak terlewati. Latensi bertambah sebesar nilainya.")
+                    Text(L10n.t("Lookahead menunda sinyal supaya batas tidak terlewati. Latensi bertambah sebesar nilainya."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .formStyle(.grouped)
@@ -1159,7 +1258,7 @@ struct RecordButton: View {
                 .foregroundStyle(on ? Style.danger : .secondary)
         }
         .buttonStyle(.plain)
-        .help(on ? "Hentikan rekaman" : "Rekam output ini ke berkas WAV")
+        .help(on ? L10n.t("Hentikan rekaman") : L10n.t("Rekam output ini ke berkas WAV"))
         .disabled(engine.recordingOutput != nil && !on)
     }
 }
@@ -1203,7 +1302,7 @@ struct RouteGraphView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                Text("Graph hanya menampilkan. Ubah koneksi di tampilan Matriks.")
+                Text(L10n.t("Graph hanya menampilkan. Ubah koneksi di tampilan Matriks."))
                     .font(.caption2).foregroundStyle(.secondary).padding(6)
             }
         }
@@ -1252,7 +1351,7 @@ struct ClipDot: View {
             .onTapGesture {
                 meters.clearClip(input: index, output: output)
             }
-            .help("Clip. Klik untuk menghapus")
+            .help(L10n.t("Clip. Klik untuk menghapus"))
     }
 
     private var isOn: Bool {
@@ -1312,16 +1411,52 @@ struct VerticalMeter: View {
     private var color: Color { db > -1 ? Style.danger : (db > -12 ? Style.warning : Style.accent) }
 }
 
+// Fader vertikal buatan sendiri. Slider bawaan yang diputar -90° tidak mengikuti kursor dengan tepat,
+// jadi nilainya dihitung langsung dari gerakan vertikal. Tahan Option atau Shift untuk gerakan lebih halus.
+// Klik dua kali mengembalikan ke 0 dB.
 struct VerticalFader: View {
     @Binding var value: Float
+    var range: ClosedRange<Float> = -60...12
+
+    @State private var dragStart: Float? = nil
 
     var body: some View {
-        Slider(value: $value, in: -60...12)
-            .controlSize(.small)
-            .tint(Style.accent)
-            .frame(width: 150)
-            .rotationEffect(.degrees(-90))
-            .frame(width: 22, height: 150)
+        GeometryReader { geo in
+            let h = max(geo.size.height, 1)
+            let span = range.upperBound - range.lowerBound
+            let frac = CGFloat((value - range.lowerBound) / span)
+            ZStack(alignment: .bottom) {
+                Capsule()
+                    .fill(Style.surfaceStrong)
+                    .frame(width: 4)
+                Capsule()
+                    .fill(Style.accent)
+                    .frame(width: 4, height: max(0, h * frac))
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 14, height: 14)
+                    .shadow(radius: 1)
+                    .offset(y: -(h * frac) + 7)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                value = 0
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { g in
+                        if dragStart == nil { dragStart = value }
+                        let fine = NSEvent.modifierFlags.contains(.option) || NSEvent.modifierFlags.contains(.shift)
+                        let scale: Float = fine ? 0.2 : 1.0
+                        let delta = Float(-g.translation.height / h) * span * scale
+                        let raw = (dragStart ?? value) + delta
+                        let clamped = min(range.upperBound, max(range.lowerBound, raw))
+                        value = (clamped * 10).rounded() / 10
+                    }
+                    .onEnded { _ in dragStart = nil }
+            )
+        }
     }
 }
 
@@ -1331,10 +1466,10 @@ struct StatusMetrics: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            metric("Buffer", meters.bufferFrames > 0 ? "\(meters.bufferFrames)" : "—")
-            metric("Callback", "\(meters.callbacks)")
+            metric(L10n.t("Buffer"), meters.bufferFrames > 0 ? "\(meters.bufferFrames)" : "—")
+            metric(L10n.t("Callback"), "\(meters.callbacks)")
             HStack(spacing: 4) {
-                Text("Dropout").font(.caption2).foregroundStyle(.secondary)
+                Text(L10n.t("Dropout")).font(.caption2).foregroundStyle(.secondary)
                 Text("\(meters.dropouts)")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(meters.dropouts > 0 ? Style.danger : .primary)

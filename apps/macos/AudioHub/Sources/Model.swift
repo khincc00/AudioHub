@@ -142,6 +142,7 @@ struct SceneFile: Codable {
     var deviceName: String
     var useVirtual: Bool
     var useVirtual2: Bool
+    var useVirtual3: Bool? = nil  // opsional: preset lama tidak punya Loopback
     var bindings: [SceneBinding]
     var inputs: [SceneInput]
     var outputs: [SceneOutput]
@@ -164,6 +165,28 @@ struct LegacySceneFile: Codable {
 }
 
 // MARK: - Perangkat sistem
+
+// Peran perangkat virtual. Menentukan nama kanalnya: VC In/Out 1–2, VC In/Out 3–4, atau Loopback 1–2.
+enum VirtualRole {
+    case vc1, vc2, loopback
+}
+
+// Proses audio di macOS yang bisa ditangkap sebagai sumber input (process tap, macOS 14.4+).
+struct AudioProcess: Identifiable, Hashable {
+    let objectID: AudioObjectID
+    let bundleID: String
+    let name: String
+    let isOutputting: Bool
+    var id: String { bundleID }
+}
+
+// Tap yang aktif untuk sesi berjalan. Urutan sama dengan kanal tap di agregat.
+struct AppTap {
+    let name: String
+    let bundleID: String
+    let tapID: AudioObjectID
+    let uid: String
+}
 
 struct DeviceInfo: Identifiable, Hashable {
     let uid: String
@@ -284,7 +307,7 @@ final class EngineController: ObservableObject {
     @Published var physIn = 0
     @Published var physOut = 0
     @Published var running = false
-    @Published var status = "Belum dibuka"
+    @Published var status = L10n.t("Belum dibuka")
     @Published var inputs = 0
     @Published var outputs = 0
     @Published var routes: [[Bool]] = []
@@ -304,7 +327,7 @@ final class EngineController: ObservableObject {
     @Published var recordingOutput: Int? = nil
     @Published var recordedFile = ""
 
-    // Virtual 1 dan 2 dipilih dari perangkat virtual yang terpasang, apa pun vendornya.
+    // Tiga peran virtual: VC 1/2, VC 3/4, dan Loopback 1/2. Dipilih dari perangkat virtual yang terpasang, apa pun vendornya.
     // Kosong = tidak dipakai. Disimpan supaya tetap terpilih setelah aplikasi dibuka ulang.
     @Published var virtualUID1: String = UserDefaults.standard.string(forKey: "virtualUID1") ?? "" {
         didSet { UserDefaults.standard.set(virtualUID1, forKey: "virtualUID1") }
@@ -312,25 +335,47 @@ final class EngineController: ObservableObject {
     @Published var virtualUID2: String = UserDefaults.standard.string(forKey: "virtualUID2") ?? "" {
         didSet { UserDefaults.standard.set(virtualUID2, forKey: "virtualUID2") }
     }
+    @Published var virtualUID3: String = UserDefaults.standard.string(forKey: "virtualUID3") ?? "" {
+        didSet { UserDefaults.standard.set(virtualUID3, forKey: "virtualUID3") }
+    }
 
     // Nilai turunan untuk skema scene dan diagnostik.
     var useVirtual: Bool { !virtualUID1.isEmpty }
     var useVirtual2: Bool { !virtualUID2.isEmpty }
+    var useVirtual3: Bool { !virtualUID3.isEmpty }
 
-    // Perangkat virtual yang bisa dipilih untuk Virtual 1 atau 2: transport virtual, punya input dan output,
-    // bukan perangkat fisik utama, dan tidak sama dengan slot lainnya.
-    func virtualCandidates(excluding uid: String) -> [DeviceInfo] {
+    // Aplikasi yang audionya ditangkap sebagai sumber input. Disimpan per bundle ID. Berlaku setelah Buka.
+    @Published var tapBundleIDs: [String] = UserDefaults.standard.stringArray(forKey: "tapBundleIDs") ?? [] {
+        didSet { UserDefaults.standard.set(tapBundleIDs, forKey: "tapBundleIDs") }
+    }
+    // Aplikasi yang diisolasi: audionya tidak keluar lagi di output asli, hanya lewat AudioHub. Berlaku setelah Buka.
+    @Published var tapIsolateBundleIDs: [String] = UserDefaults.standard.stringArray(forKey: "tapIsolateBundleIDs") ?? [] {
+        didSet { UserDefaults.standard.set(tapIsolateBundleIDs, forKey: "tapIsolateBundleIDs") }
+    }
+    // Tap yang aktif untuk sesi berjalan, sesuai urutan kanal tap di agregat.
+    private(set) var appTaps: [AppTap] = []
+    // Catatan tap dari pembukaan terakhir. Ditampilkan setelah status pembukaan.
+    private var tapNote = ""
+
+    // Perangkat virtual aktif jika sisi output (VC Out) punya route yang tersambung. Sisi input (VC In) perangkat
+    // itu hanya menerima audio saat output-nya aktif; kalau output mati, VC In tidak menerima apa-apa.
+    @Published private(set) var deviceLive: [VirtualRole: Bool] = [:]
+
+    // Pilihan virtual yang terisi, dengan perannya, urut VC 1/2, VC 3/4, lalu Loopback.
+    var selectedVirtuals: [(role: VirtualRole, uid: String)] {
+        [(.vc1, virtualUID1), (.vc2, virtualUID2), (.loopback, virtualUID3)].filter { !$0.uid.isEmpty }
+    }
+
+    // Perangkat virtual yang bisa dipilih untuk satu peran: transport virtual, punya input dan output,
+    // bukan perangkat fisik utama, dan tidak dipakai peran lain (uids berisi UID peran lain).
+    func virtualCandidates(excluding uids: [String]) -> [DeviceInfo] {
         devices.filter {
-            $0.isVirtual && $0.inCh > 0 && $0.outCh > 0 && $0.uid != uid && $0.name != deviceName
+            $0.isVirtual && $0.inCh > 0 && $0.outCh > 0 && !uids.contains($0.uid) && $0.name != deviceName
         }
     }
 
-    // Virtual device yang masuk aggregate saat terakhir dibuka, sesuai urutan kanal (uid1 lalu uid2).
-    private(set) var openedUID1 = ""
-    private(set) var openedUID2 = ""
-
-    var openedName1: String { openedUID1.isEmpty ? "" : deviceNameOf(openedUID1) }
-    var openedName2: String { openedUID2.isEmpty ? "" : deviceNameOf(openedUID2) }
+    // Virtual device yang masuk aggregate saat terakhir dibuka, dengan perannya, sesuai urutan kanal.
+    private(set) var openedVirtuals: [(role: VirtualRole, uid: String)] = []
 
     func deviceNameOf(_ uid: String) -> String {
         devices.first(where: { $0.uid == uid })?.name ?? uid
@@ -472,16 +517,12 @@ final class EngineController: ObservableObject {
         presets.contains(sanitize(raw))
     }
 
-    private var virtualUIDsInUse: [String] {
-        [virtualUID1, virtualUID2].filter { !$0.isEmpty }
-    }
-
     // Peran yang perangkatnya tidak tersedia saat ini. Tidak pernah diganti diam-diam.
     private func refreshMissing() {
         let present = Set(devices.map { $0.uid })
         var missing: [String] = []
         if !devices.contains(where: { $0.name == deviceName }) { missing.append(deviceName) }
-        for uid in virtualUIDsInUse where !present.contains(uid) { missing.append(uid) }
+        for slot in selectedVirtuals where !present.contains(slot.uid) { missing.append(slot.uid) }
         missingRoles = missing
     }
 
@@ -490,21 +531,28 @@ final class EngineController: ObservableObject {
     func open() {
         close()
         refreshDevices()
-        if useVirtual && useVirtual2 && virtualUID2 == virtualUID1 {
-            status = "Virtual 1 dan Virtual 2 harus perangkat yang berbeda"
+        let picks = selectedVirtuals
+        if Set(picks.map { $0.uid }).count != picks.count {
+            status = L10n.t("VC 1/2, VC 3/4, dan Loopback harus perangkat yang berbeda")
             return
         }
         var buf = [CChar](repeating: 0, count: 256)
         let handle: OpaquePointer?
         // Pilihan buffer dan rate dipasang sebelum perangkat dibuka. Virtual device ikut memakai buffer yang sama.
         ah_io_set_preferences(prefBuffer, prefSampleRate)
-        // Virtual 1 dipakai jika dipilih; jika hanya Virtual 2 yang dipilih, dialah yang masuk aggregate.
-        let uid1: String? = useVirtual ? virtualUID1 : (useVirtual2 ? virtualUID2 : nil)
-        let uid2: String? = (useVirtual && useVirtual2) ? virtualUID2 : nil
-        openedUID1 = uid1 ?? ""
-        openedUID2 = uid2 ?? ""
-        if let u1 = uid1 {
-            handle = ah_io_open_with_virtuals(deviceName, u1, uid2, &buf, 256)
+        // Virtual yang kosong dilewati. Slot pertama yang terisi menjadi clock agregat, dan urutan kanalnya mengikuti picks.
+        openedVirtuals = picks
+        if let first = picks.first {
+            let uid2: String? = picks.count > 1 ? picks[1].uid : nil
+            let uid3: String? = picks.count > 2 ? picks[2].uid : nil
+            // Tap aplikasi masuk ke agregat, jadi hanya bisa dipakai bersama minimal satu virtual.
+            let tapUIDs = makeAppTaps()
+            let cUIDs: [UnsafePointer<CChar>?] = tapUIDs.map { UnsafePointer(strdup($0)) }
+            defer { cUIDs.forEach { free(UnsafeMutableRawPointer(mutating: $0)) } }
+            handle = cUIDs.withUnsafeBufferPointer { ptrs in
+                ah_io_open_with_virtuals(deviceName, first.uid, uid2, uid3, ptrs.baseAddress, Int32(cUIDs.count), &buf, 256)
+            }
+            if handle == nil { releaseAppTaps() }
         } else {
             handle = ah_io_open(deviceName, &buf, 256)
         }
@@ -521,17 +569,17 @@ final class EngineController: ObservableObject {
         resetDefaults()
         loadEffectNames()
         refreshPresets()
-        if let last = UserDefaults.standard.string(forKey: "lastPreset"), presets.contains(last) {
-            loadPreset(last, quiet: true)
-        }
+        // Preset terakhir tidak dimuat otomatis: semua route dan input mulai dari keadaan mati.
         ioGeneration += 1
-        status = "Terbuka: \(inputs) in (\(physIn) fisik), \(outputs) out (\(physOut) fisik)"
+        status = L10n.f("Terbuka: %d in (%d fisik), %d out (%d fisik)", inputs, physIn, outputs, physOut)
+        if !tapNote.isEmpty { status += " · " + tapNote }
     }
 
-    // Default: fisik → fisik (input i → output i), gain 0 dB, send 0 dB, tidak dibisukan.
-    // Virtual tidak dihubungkan otomatis.
+    // Default: semua route mati, gain 0 dB, send 0 dB, tidak dibisukan. Panel input selalu mendengarkan;
+    // suara baru diteruskan jika sel matriks ditekan. Seperti default Routing Center.
     func resetDefaults() {
-        routes = (0..<inputs).map { i in (0..<outputs).map { j in i == j && i < physIn && j < physOut } }
+        routes = (0..<inputs).map { _ in Array(repeating: false, count: outputs) }
+        deviceLive = [:]
         sends = Array(repeating: Array(repeating: 0, count: outputs), count: inputs)
         gains = Array(repeating: 0, count: inputs)
         mutes = Array(repeating: false, count: inputs)
@@ -548,6 +596,7 @@ final class EngineController: ObservableObject {
         fx = Array(repeating: ChannelFx(), count: inputs)
         outFx = Array(repeating: LimiterFx(), count: outputs)
         currentPreset = ""
+        refreshLive()
         applyAll()
     }
 
@@ -558,21 +607,213 @@ final class EngineController: ObservableObject {
         effectNames = text.split(separator: "\n").map(String.init).sorted()
     }
 
-    // Kanal virtual diberi nama perangkatnya, mis. "avhub_virtual1 · 1", supaya tidak tertukar antar perangkat.
+    // Nama default mengikuti peran perangkat, bukan posisinya di agregat: VC 1/2 dan VC 3/4 memakai nomor kanal
+    // tetap, dan Loopback dinomori dari 1 di perangkatnya sendiri.
+    private func virtualLabel(owner: Int, local: Int, output: Bool) -> String? {
+        guard owner >= 1, owner <= openedVirtuals.count else { return nil }
+        let side = output ? "Out" : "In"
+        switch openedVirtuals[owner - 1].role {
+        case .vc1: return "VC \(side) \(local)"
+        case .vc2: return "VC \(side) \(local + 2)"
+        case .loopback: return "Loopback \(local)"
+        }
+    }
+
     func defaultInLabel(_ i: Int) -> String {
-        if i < physIn { return "Fisik In \(i + 1)" }
+        if i < physIn { return "MIC In \(i + 1)" }
         let (owner, local) = channelOwner(i, output: false)
-        if owner == 1 && !openedName1.isEmpty { return "\(openedName1) · \(local)" }
-        if owner == 2 && !openedName2.isEmpty { return "\(openedName2) · \(local)" }
-        return "Virtual In \(i - physIn + 1)"
+        if owner == 4 { return tapLabel(local: local) }
+        return virtualLabel(owner: owner, local: local, output: false) ?? "Virtual In \(i - physIn + 1)"
     }
 
     func defaultOutLabel(_ j: Int) -> String {
-        if j < physOut { return "Fisik Out \(j + 1)" }
+        if j < physOut { return "HP Out \(j + 1)" }
         let (owner, local) = channelOwner(j, output: true)
-        if owner == 1 && !openedName1.isEmpty { return "\(openedName1) · \(local)" }
-        if owner == 2 && !openedName2.isEmpty { return "\(openedName2) · \(local)" }
-        return "Virtual Out \(j - physOut + 1)"
+        return virtualLabel(owner: owner, local: local, output: true) ?? "Virtual Out \(j - physOut + 1)"
+    }
+
+    // Kanal pertama dari sebuah kelompok (fisik, VC 1/2, VC 3/4, Loopback). Dipakai untuk memberi jarak di matriks.
+    func startsGroup(_ index: Int, output: Bool) -> Bool {
+        index > 0 && channelOwner(index, output: output).owner != channelOwner(index - 1, output: output).owner
+    }
+
+    // Kanal dikelompokkan per pemilik, lalu per pasang stereo. Dipakai untuk layar utama.
+    func channelPairs(output: Bool) -> [[Int]] {
+        let count = output ? outputs : inputs
+        var groups: [[Int]] = []
+        var owner = Int.min
+        for i in 0..<count {
+            let o = channelOwner(i, output: output).owner
+            if groups.isEmpty || o != owner || groups[groups.count - 1].count == 2 {
+                groups.append([])
+                owner = o
+            }
+            groups[groups.count - 1].append(i)
+        }
+        return groups
+    }
+
+    // MARK: Tangkap audio per aplikasi (process tap)
+
+    // Proses dengan bundle ID yang ada di sistem. Yang sedang memutar audio ditandai.
+    func audioProcesses() -> [AudioProcess] {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(system, &addr, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        var result: [AudioProcess] = []
+        for pid in ids {
+            guard let bundle = processString(pid, kAudioProcessPropertyBundleID), !bundle.isEmpty,
+                  bundle != Bundle.main.bundleIdentifier,
+                  // Hanya aplikasi yang dikenal sistem sebagai aplikasi biasa, bukan daemon sistem
+                  let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first,
+                  let name = app.localizedName else { continue }
+            result.append(AudioProcess(objectID: pid, bundleID: bundle, name: name,
+                                       isOutputting: processFlag(pid, kAudioProcessPropertyIsRunningOutput)))
+        }
+        // Yang sedang memutar audio ditaruh di atas, lalu urut nama
+        return result.sorted {
+            if $0.isOutputting != $1.isOutputting { return $0.isOutputting }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private func processString(_ obj: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var addr = AudioObjectPropertyAddress(mSelector: selector,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var value: CFString? = nil
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        guard AudioObjectGetPropertyData(obj, &addr, 0, nil, &size, &value) == noErr else { return nil }
+        return value as String?
+    }
+
+    private func processFlag(_ obj: AudioObjectID, _ selector: AudioObjectPropertySelector) -> Bool {
+        var addr = AudioObjectPropertyAddress(mSelector: selector,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(obj, &addr, 0, nil, &size, &value) == noErr else { return false }
+        return value != 0
+    }
+
+    // Membuat satu tap per aplikasi yang dipilih dan sedang berjalan. Tap hanya dibuat saat perangkat dibuka.
+    // Mengembalikan UID tap untuk dimasukkan ke agregat. Tap yang gagal dilaporkan lewat status.
+    private func makeAppTaps() -> [String] {
+        releaseAppTaps()
+        let processes = audioProcesses()
+        var notRunning: [String] = []
+        var failed: [String] = []
+        for bundle in tapBundleIDs.prefix(4) {
+            guard let proc = processes.first(where: { $0.bundleID == bundle }) else {
+                notRunning.append(bundle)
+                continue
+            }
+            let desc = CATapDescription(stereoMixdownOfProcesses: [proc.objectID])
+            // Tanpa isolasi, audio tetap keluar lewat output asli (rawValue 0, CATapUnmuted).
+            // Dengan isolasi, output asli dibisukan selama ditangkap (rawValue 2, CATapMutedWhenTapped).
+            desc.muteBehavior = CATapMuteBehavior(rawValue: tapIsolateBundleIDs.contains(bundle) ? 2 : 0)!
+            desc.name = proc.name
+            desc.isPrivate = true
+            var tapID = AudioObjectID(kAudioObjectUnknown)
+            let st = AudioHardwareCreateProcessTap(desc, &tapID)
+            if st == noErr {
+                // UID tap dari sistem, dipakai agregat. Agregat dengan tap harus private.
+                appTaps.append(AppTap(name: proc.name, bundleID: bundle, tapID: tapID, uid: tapUID(tapID) ?? desc.uuid.uuidString))
+            } else {
+                failed.append("\(proc.name) (\(st))")
+            }
+        }
+        tapNote = ""
+        if !notRunning.isEmpty {
+            tapNote = L10n.f("Tidak berjalan: %@", notRunning.joined(separator: ", "))
+        }
+        if !failed.isEmpty {
+            tapNote = L10n.f("Gagal menangkap %@. Beri izin Audio Capture di Pengaturan Sistem.", failed.joined(separator: ", "))
+        }
+        return appTaps.map { $0.uid }
+    }
+
+    private func tapUID(_ tapID: AudioObjectID) -> String? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioTapPropertyUID,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var value: CFString? = nil
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        guard AudioObjectGetPropertyData(tapID, &addr, 0, nil, &size, &value) == noErr else { return nil }
+        return value as String?
+    }
+
+    private func releaseAppTaps() {
+        for t in appTaps { AudioHardwareDestroyProcessTap(t.tapID) }
+        appTaps = []
+    }
+
+    // Nama kanal tap: "Spotify 1", "Spotify 2", lalu aplikasi berikutnya. Tiap aplikasi punya dua kanal.
+    private func tapLabel(local: Int) -> String {
+        let idx = (local - 1) / 2
+        let ch = (local - 1) % 2 + 1
+        guard idx < appTaps.count else { return L10n.f("Aplikasi %d", local) }
+        return "\(appTaps[idx].name) \(ch)"
+    }
+
+
+    // Peran perangkat virtual untuk kanal ini, atau nil jika kanal fisik.
+    func virtualRole(channel i: Int, output: Bool) -> VirtualRole? {
+        let (owner, _) = channelOwner(i, output: output)
+        guard owner >= 1, owner <= openedVirtuals.count else { return nil }
+        return openedVirtuals[owner - 1].role
+    }
+
+    // Kanal aktif jika fisik, atau jika perangkat virtualnya aktif.
+    func isLive(channel i: Int, output: Bool) -> Bool {
+        guard let role = virtualRole(channel: i, output: output) else { return true }
+        return deviceLive[role] ?? false
+    }
+
+    // Menghitung ulang status perangkat virtual dari route yang ada. Jika berubah, semua route dikirim ulang.
+    private func refreshLive() {
+        var next: [VirtualRole: Bool] = [:]
+        for slot in openedVirtuals {
+            next[slot.role] = (0..<outputs).contains { j in
+                virtualRole(channel: j, output: true) == slot.role && routes.contains { $0[j] }
+            }
+        }
+        guard next != deviceLive else { return }
+        deviceLive = next
+        for i in 0..<inputs { for j in 0..<outputs { pushRoute(i, j) } }
+    }
+
+    // Sel matriks pasangan: tersambung jika ada route aktif di antara kedua pasangan.
+    func pairRouted(_ ins: [Int], _ outs: [Int]) -> Bool {
+        ins.contains { i in outs.contains { j in routes[i][j] } }
+    }
+
+    // Sel matriks pasangan boleh dipakai jika ada kombinasi kanal yang diizinkan (virtual ke virtual perangkat sama tidak).
+    // Semua sel boleh dipencet, termasuk yang menyalakan perangkat virtual. Audio hanya lewat jika kedua sisinya aktif (effectiveRoute).
+    func pairAllowed(_ ins: [Int], _ outs: [Int]) -> Bool {
+        ins.contains { i in outs.contains { j in routeAllowed(i, j) } }
+    }
+
+    // Menyambung atau memutus semua route antara dua pasangan, hanya untuk kombinasi yang diizinkan.
+    func setPairRoute(_ ins: [Int], _ outs: [Int], _ on: Bool) {
+        for i in ins { for j in outs where routeAllowed(i, j) { setRoute(i, j, on) } }
+        refreshLive()
+    }
+
+    // Judul pasangan dari nama default, bukan nama buatan pengguna: "MIC In 1/2", "VC Out 3/4", "Loopback 1/2".
+    func pairTitle(_ indices: [Int], output: Bool) -> String {
+        let labels = indices.map { output ? defaultOutLabel($0) : defaultInLabel($0) }
+        guard let first = labels.first else { return "" }
+        guard labels.count > 1 else { return first }
+        let base = first.split(separator: " ").dropLast().joined(separator: " ")
+        let numbers = labels.compactMap { $0.split(separator: " ").last.map(String.init) }.joined(separator: "/")
+        return "\(base) \(numbers)"
     }
 
     // Nama yang tampil: nama buatan pengguna jika ada, selain itu nama default
@@ -601,19 +842,20 @@ final class EngineController: ObservableObject {
         guard let h = io else { return }
         if ah_io_start(h) == 0 {
             running = true
-            status = "Berjalan"
+            status = L10n.t("Berjalan")
             aliveMisses = 0
             cancelReconnect()
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
         } else {
-            status = "Gagal memulai perangkat"
+            status = L10n.t("Gagal memulai perangkat")
         }
     }
 
     func stop() {
+        let wasRunning = running
         cancelReconnect()
         haltIO()
-        if running { status = "Dihentikan" }
+        if wasRunning { status = L10n.t("Dihentikan") }
     }
 
     // Menghentikan IO tanpa membatalkan percobaan sambung ulang
@@ -630,13 +872,14 @@ final class EngineController: ObservableObject {
         haltIO()
         if let h = io { ah_io_close(h) }
         io = nil
+        releaseAppTaps()
     }
 
     // MARK: - Sambung ulang
 
     private func beginReconnect() {
         cancelReconnect()
-        status = "Perangkat terputus. Mencoba menyambung ulang setiap 2 detik..."
+        status = L10n.t("Perangkat terputus. Mencoba menyambung ulang setiap 2 detik...")
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.attemptReconnect()
         }
@@ -647,9 +890,9 @@ final class EngineController: ObservableObject {
         open()
         if isOpen {
             start()
-            status = "Tersambung kembali: \(status)"
+            status = L10n.f("Tersambung kembali: %@", status)
         } else {
-            status = "Perangkat belum tersedia, mencoba lagi..."
+            status = L10n.t("Perangkat belum tersedia, mencoba lagi...")
         }
     }
 
@@ -660,16 +903,17 @@ final class EngineController: ObservableObject {
 
     // MARK: - Routing, send, gain, mute
 
-    // Route boleh dibuat? Aturan ada di backend (virtual → virtual hanya antar perangkat virtual berbeda).
+    // Route boleh dibuat? Hanya indeks kanal yang diperiksa. Route virtual → virtual dalam perangkat yang sama boleh.
     func routeAllowed(_ i: Int, _ j: Int) -> Bool {
         guard let h = io else { return false }
         return ah_io_route_allowed(h, Int32(i), Int32(j)) == 1
     }
 
+
     func setRoute(_ i: Int, _ j: Int, _ on: Bool) {
         guard io != nil else { return }
         if on && !routeAllowed(i, j) {
-            status = "Ditolak: route virtual ke virtual dalam perangkat yang sama akan membentuk loop"
+            status = L10n.t("Ditolak: indeks kanal tidak valid")
             return
         }
         routes[i][j] = on
@@ -685,6 +929,7 @@ final class EngineController: ObservableObject {
 
     // Route yang berlaku: keluaran monitor (output 1) hanya memakai input yang di-solo, jika ada solo.
     private func effectiveRoute(_ i: Int, _ j: Int) -> Bool {
+        guard isLive(channel: i, output: false), isLive(channel: j, output: true) else { return false }
         if j == 0 && !soloInputs.isEmpty { return routes[i][0] && soloInputs.contains(i) }
         return routes[i][j]
     }
@@ -697,7 +942,7 @@ final class EngineController: ObservableObject {
     func toggleSolo(_ i: Int) {
         if soloInputs.contains(i) { soloInputs.remove(i) } else { soloInputs.insert(i) }
         for k in 0..<inputs { pushRoute(k, 0) }
-        status = soloInputs.isEmpty ? "Solo dilepas" : "Solo aktif (hanya monitor): \(soloInputs.sorted().map { inLabel($0) }.joined(separator: ", "))"
+        status = soloInputs.isEmpty ? L10n.t("Solo dilepas") : L10n.f("Solo aktif (hanya monitor): %@", soloInputs.sorted().map { inLabel($0) }.joined(separator: ", "))
     }
 
     func setPan(_ i: Int, _ pan: Float) {
@@ -713,9 +958,9 @@ final class EngineController: ObservableObject {
         if ah_io_record_start(h, Int32(j), url.path) == 0 {
             recordingOutput = j
             recordedFile = url.lastPathComponent
-            status = "Merekam \(outLabel(j)) ke \(url.lastPathComponent)"
+            status = L10n.f("Merekam %@ ke %@", outLabel(j), url.lastPathComponent)
         } else {
-            status = "Gagal memulai rekaman"
+            status = L10n.t("Gagal memulai rekaman")
         }
     }
 
@@ -725,7 +970,7 @@ final class EngineController: ObservableObject {
         recordingOutput = nil
         var written: UInt64 = 0, dropped: UInt64 = 0
         ah_io_record_stats(h, &written, &dropped)
-        status = "Rekaman disimpan: \(recordedFile) (\(written) frame, terbuang \(dropped))"
+        status = L10n.f("Rekaman disimpan: %@ (%d frame, terbuang %d)", recordedFile, Int(written), Int(dropped))
     }
 
     // Input yang terpengaruh: jika pasangan ditautkan, keduanya ikut berubah.
@@ -872,13 +1117,14 @@ final class EngineController: ObservableObject {
             if autoReconnect {
                 beginReconnect()
             } else {
-                status = "Perangkat terputus. Hubungkan kembali lalu tekan Buka."
+                status = L10n.t("Perangkat terputus. Hubungkan kembali lalu tekan Buka.")
             }
             return
         }
         aliveMisses = 0
-        var inP = [Float](repeating: 0, count: 8)
-        var outP = [Float](repeating: 0, count: 8)
+        // Sama dengan kMaxCh di backend. Buffer harus cukup untuk semua kanal input dan output.
+        var inP = [Float](repeating: 0, count: 32)
+        var outP = [Float](repeating: 0, count: 32)
         ah_io_peaks(h, &inP, &outP)
         var st = AHIOStats()
         ah_io_stats(h, &st)
@@ -905,15 +1151,12 @@ final class EngineController: ObservableObject {
     // UID perangkat dan nomor kanal untuk kanal virtual. Saat terbuka dari backend; saat tertutup dari pilihan tersimpan.
     private func virtualBinding(_ index: Int, output: Bool, fallbackIndex v: Int) -> (uid: String, channel: Int) {
         guard isOpen else {
-            let uids = virtualUIDsInUse
-            return (v / 2 < uids.count ? uids[v / 2] : "", v % 2 + 1)
+            let picks = selectedVirtuals
+            return (v / 2 < picks.count ? picks[v / 2].uid : "", v % 2 + 1)
         }
         let (owner, local) = channelOwner(index, output: output)
-        switch owner {
-        case 1: return (openedUID1, local)
-        case 2: return (openedUID2, local)
-        default: return ("", 0)
-        }
+        guard owner >= 1, owner <= openedVirtuals.count else { return ("", 0) }
+        return (openedVirtuals[owner - 1].uid, local)
     }
 
     // Binding untuk setiap input dan output saat ini, dengan peran logis.
@@ -968,7 +1211,7 @@ final class EngineController: ObservableObject {
         if let problem = presetNameProblem(raw) { status = problem; return }
         let name = sanitize(raw)
         let scene = SceneFile(
-            name: name, deviceName: deviceName, useVirtual: useVirtual, useVirtual2: useVirtual2,
+            name: name, deviceName: deviceName, useVirtual: useVirtual, useVirtual2: useVirtual2, useVirtual3: useVirtual3,
             bindings: currentBindings(),
             inputs: (0..<inputs).map { SceneInput(id: "in:\($0)", gainDb: gains[$0], mute: mutes[$0], fx: fx[$0]) },
             outputs: (0..<outputs).map { SceneOutput(id: "out:\($0)", name: outNames[$0], gainDb: outputGains[$0],
@@ -982,16 +1225,16 @@ final class EngineController: ObservableObject {
             currentPreset = name
             UserDefaults.standard.set(name, forKey: "lastPreset")
             refreshPresets()
-            status = "Preset \"\(name)\" disimpan"
+            status = L10n.f("Preset \"%@\" disimpan", name)
         } catch {
-            status = "Gagal menyimpan preset: \(error.localizedDescription)"
+            status = L10n.t("Gagal menyimpan preset:") + " \(error.localizedDescription)"
         }
     }
 
     func loadPreset(_ name: String, quiet: Bool = false) {
         let url = presetsDir.appendingPathComponent("\(name).json")
         guard let data = try? Data(contentsOf: url) else {
-            if !quiet { status = "Preset \"\(name)\" tidak ditemukan" }
+            if !quiet { status = L10n.f("Preset \"%@\" tidak ditemukan", name) }
             return
         }
         if let scene = try? JSONDecoder().decode(SceneFile.self, from: data) {
@@ -999,21 +1242,21 @@ final class EngineController: ObservableObject {
         } else if let legacy = try? JSONDecoder().decode(LegacySceneFile.self, from: data) {
             applyLegacy(legacy, name: name, quiet: quiet)
         } else {
-            if !quiet { status = "Preset \"\(name)\" tidak bisa dibaca" }
+            if !quiet { status = L10n.f("Preset \"%@\" tidak bisa dibaca", name) }
         }
     }
 
     private func applyScene(_ scene: SceneFile, quiet: Bool) {
-        guard scene.schemaVersion == 1 else { status = "Versi preset tidak dikenal"; return }
+        guard scene.schemaVersion == 1 else { status = L10n.t("Versi preset tidak dikenal"); return }
         guard scene.inputs.count == inputs, scene.outputs.count == outputs else {
-            status = "Preset \"\(scene.name)\" tidak cocok dengan jumlah kanal perangkat"
+            status = L10n.f("Preset \"%@\" tidak cocok dengan jumlah kanal perangkat", scene.name)
             return
         }
         // Route yang tidak diizinkan backend (virtual ke virtual dalam perangkat yang sama) ditolak
         for r in scene.routes where r.enabled {
-            guard let i = Int(r.from.dropFirst(3)), let j = Int(r.to.dropFirst(4)) else { status = "Route tidak valid"; return }
+            guard let i = Int(r.from.dropFirst(3)), let j = Int(r.to.dropFirst(4)) else { status = L10n.t("Route tidak valid"); return }
             if !routeAllowed(i, j) {
-                status = "Preset berisi route yang tidak diizinkan, ditolak"
+                status = L10n.t("Preset berisi route yang tidak diizinkan, ditolak")
                 return
             }
         }
@@ -1047,7 +1290,7 @@ final class EngineController: ObservableObject {
     private func applyLegacy(_ legacy: LegacySceneFile, name: String, quiet: Bool) {
         guard legacy.routes.count == inputs, legacy.routes.allSatisfy({ $0.count == outputs }),
               legacy.gains.count == inputs, legacy.mutes.count == inputs else {
-            status = "Preset \"\(name)\" tidak cocok dengan perangkat yang terbuka"
+            status = L10n.f("Preset \"%@\" tidak cocok dengan perangkat yang terbuka", name)
             return
         }
         routes = legacy.routes
@@ -1064,11 +1307,12 @@ final class EngineController: ObservableObject {
     private func finishLoad(name: String, quiet: Bool, missingNote: String) {
         currentPreset = name
         UserDefaults.standard.set(name, forKey: "lastPreset")
+        refreshLive()
         applyAll()
         for i in 0..<inputs where !fx[i].insert.isEmpty && !isInsertLoaded(i, fx[i].insert) {
             setInsert(i, fx[i].insert)
         }
-        if !quiet { status = "Preset \"\(name)\" dimuat.\(missingNote)" }
+        if !quiet { status = L10n.f("Preset \"%@\" dimuat.", name) + missingNote }
     }
 
     private func isInsertLoaded(_ i: Int, _ name: String) -> Bool {
@@ -1082,7 +1326,7 @@ final class EngineController: ObservableObject {
         try? FileManager.default.removeItem(at: presetsDir.appendingPathComponent("\(name).json"))
         if currentPreset == name { currentPreset = "" }
         refreshPresets()
-        status = "Preset \"\(name)\" dihapus"
+        status = L10n.f("Preset \"%@\" dihapus", name)
     }
 
     // MARK: - Template routing
@@ -1090,36 +1334,37 @@ final class EngineController: ObservableObject {
     // Template dibuat dari peran: mic = input fisik 1, monitor = output fisik 1,
     // virtual = output virtual pertama (jika ada). Template juga mengatur DSP mic.
     func applyTemplate(_ name: String) {
-        guard isOpen, physIn >= 1, physOut >= 1 else { status = "Template butuh input dan output fisik"; return }
+        guard isOpen, physIn >= 1, physOut >= 1 else { status = L10n.t("Template butuh input dan output fisik"); return }
         let hasVirtualOut = outputs > physOut
         let virtualOut = physOut
         routes = (0..<inputs).map { _ in Array(repeating: false, count: outputs) }
         switch name {
-        case "Podcast":
+        case L10n.t("Podcast"):
             routes[0][0] = true                                  // mic → monitor
             if hasVirtualOut { routes[0][virtualOut] = true }    // mic → rekam/streaming
             fx[0].gate = GateFx(enabled: true, thresholdDb: -45, attackMs: 2, releaseMs: 150, holdMs: 80)
             fx[0].comp = CompFx(enabled: true, thresholdDb: -18, ratio: 3, attackMs: 8, releaseMs: 120, makeupDb: 4, kneeDb: 6)
             fx[0].eq = EqFx(enabled: true, lowDb: 0, lowHz: 120, midDb: 2, midHz: 3000, midQ: 0.8, highDb: 0, highHz: 8000)
-        case "Streaming":
+        case L10n.t("Streaming"):
             routes[0][0] = true                                  // mic → monitor
             if hasVirtualOut { routes[0][virtualOut] = true }    // mic → virtual out (OBS)
-        case "Online Meeting":
+        case L10n.t("Online Meeting"):
             routes[0][0] = true                                  // mic → monitor
             if hasVirtualOut { routes[0][virtualOut] = true }    // mic → aplikasi panggilan
             if inputs > physIn { routes[physIn][0] = true }      // suara panggilan → monitor
-        case "Recording":
+        case L10n.t("Recording"):
             routes[0][0] = true                                  // mic → monitor saja
             if hasVirtualOut { routes[0][virtualOut] = true }    // mic → aplikasi rekam
         default:
-            status = "Template tidak dikenal"
+            status = L10n.t("Template tidak dikenal")
             return
         }
         // Route virtual → virtual tidak pernah dibuat oleh template
         for i in 0..<inputs { for j in 0..<outputs where i >= physIn && j >= physOut { routes[i][j] = false } }
+        refreshLive()
         applyAll()
         currentPreset = ""
-        status = "Template \(name) diterapkan"
+        status = L10n.f("Template %@ diterapkan", name)
     }
 
     // MARK: - Diagnostik
@@ -1133,7 +1378,7 @@ final class EngineController: ObservableObject {
         lines.append("Waktu: \(df.string(from: Date()))")
         lines.append("Redaksi identitas: \(redactDiagnostics ? "ya" : "tidak")")
         lines.append("Perangkat fisik: \(dev)")
-        lines.append("Virtual 1: \(useVirtual), Virtual 2: \(useVirtual2)")
+        lines.append("VC 1/2: \(useVirtual), VC 3/4: \(useVirtual2), Loopback 1/2: \(useVirtual3)")
         lines.append("Input: \(inputs) (fisik \(physIn)), Output: \(outputs) (fisik \(physOut))")
         lines.append("Status: \(status)")
         lines.append("Sample rate: \(meters.sampleRate) Hz, buffer: \(meters.bufferFrames) frame")
@@ -1172,4 +1417,197 @@ final class EngineController: ObservableObject {
 
 func toDB(_ v: Float) -> Float {
     v > 0 ? 20 * log10(v) : -120
+}
+
+// MARK: - Bahasa antarmuka
+
+// Bahasa antarmuka. Default Inggris; Bahasa Indonesia tetap tersedia.
+// Kunci kamus adalah teks Indonesia asli, jadi teks yang belum punya terjemahan tetap tampil apa adanya.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case en
+    case id
+
+    var id: String { rawValue }
+
+    // Nama bahasa ditulis dalam bahasanya sendiri, supaya selalu bisa dikenali.
+    var label: String {
+        switch self {
+        case .en: return "English"
+        case .id: return "Bahasa Indonesia"
+        }
+    }
+}
+
+enum L10n {
+    static let storageKey = "appLanguage"
+
+    static var current: AppLanguage {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .en
+    }
+
+    static func t(_ key: String) -> String {
+        guard current == .en else { return key }
+        return english[key] ?? key
+    }
+
+    // Teks dengan argumen (format printf), mis. "Terbuka: %d in (%d fisik)…".
+    static func f(_ key: String, _ args: CVarArg...) -> String {
+        String(format: t(key), arguments: args)
+    }
+
+    static let english: [String: String] = [
+        // Umum
+        "Bahasa": "Language",
+        "Tampilan": "Appearance",
+        "Sistem": "System",
+        "Terang": "Light",
+        "Gelap": "Dark",
+        "Perangkat": "Device",
+        "Status": "Status",
+        "Buka": "Open",
+        "Mulai": "Start",
+        "Hentikan": "Stop",
+        "Berhenti": "Stopped",
+        "Berjalan": "Running",
+        "Belum dibuka": "Not opened",
+        "Dihentikan": "Stopped",
+        "Tidak ada": "None",
+        "Batal": "Cancel",
+        "Simpan": "Save",
+        "Hapus": "Delete",
+        "Muat": "Load",
+        "Timpa": "Overwrite",
+        "Ekspor": "Export",
+        "Lanjutan": "Advanced",
+        "Ringkasan": "Summary",
+        "Nama": "Name",
+        "Template": "Template",
+        "Solo": "Solo",
+        "Pan": "Pan",
+        "Gain": "Gain",
+        "Buffer": "Buffer",
+        "Dropout": "Dropout",
+        "Callback": "Callback",
+        "Engine": "Engine",
+        "Plugin": "Plugin",
+        "Rekaman": "Recording",
+        "Recording": "Recording",
+        "Streaming": "Streaming",
+        "Podcast": "Podcast",
+        "Online Meeting": "Online Meeting",
+        "Fisik": "Physical",
+        "dB": "dB",
+
+        // Bagian utama
+        "Routing Center": "Routing Center",
+        "Routing Preset": "Routing Preset",
+        "Belum ada perangkat terbuka": "No device open",
+        "Pilih perangkat di kanan, lalu tekan Buka.": "Choose a device on the right, then press Open.",
+        "Buka ulang perangkat dengan pengaturan di atas": "Reopen the device with the settings above",
+        "Pengaturan Perangkat": "Device Settings",
+        "Peran perangkat": "Device roles",
+        "Kontrol perangkat": "Device controls",
+        "Sambung ulang otomatis": "Auto reconnect",
+        "Sample rate": "Sample rate",
+        "Latensi input": "Input latency",
+        "Latensi output": "Output latency",
+        "Scene aktif": "Active scene",
+        "Perbarui daftar perangkat": "Refresh device list",
+        "Reset ke default": "Reset to default",
+        "Pilih preset": "Choose preset",
+        "Nama preset": "Preset name",
+        "Simpan sebagai": "Save as",
+        "Mengatur routing dan DSP mic sesuai skenario.": "Sets mic routing and DSP for each scenario.",
+        "Putuskan koneksi": "Disconnect",
+        "Tautkan pasangan stereo": "Link stereo pair",
+        "Atur kanal…": "Channel settings…",
+        "Bisukan": "Mute",
+        "Bisukan kanal": "Mute channel",
+        "Batalkan bisu": "Unmute",
+        "Bisukan output": "Mute output",
+        "BISU": "MUTED",
+        "Klik untuk mengganti warna": "Click to change color",
+        "Tampilkan graph": "Show graph",
+        "Tampilkan matriks": "Show matrix",
+        "Graph hanya menampilkan. Ubah koneksi di tampilan Matriks.": "Graph is view-only. Change connections in the Matrix view.",
+        "Rekam output ini ke berkas WAV": "Record this output to a WAV file",
+        "Hentikan rekaman": "Stop recording",
+        "Limiter dan rekam": "Limiter and record",
+        "Solo: hanya memengaruhi monitor": "Solo: affects monitor only",
+        "Sembunyikan nama dan UID perangkat": "Hide device names and UIDs",
+        "Simpan laporan diagnostik": "Save diagnostic report",
+        "Laporan berisi routing, gain, dan status. Aman dibagikan bila nama perangkat disembunyikan.": "The report contains routing, gain, and status. Safe to share if device names are hidden.",
+
+        // Kanal, DSP, dan efek
+        "Dinamika, EQ, delay, dan plugin": "Dynamics, EQ, delay, and plugins",
+        "Aktifkan EQ": "Enable EQ",
+        "Aktifkan delay": "Enable delay",
+        "Aktifkan gate": "Enable gate",
+        "Aktifkan kompresor": "Enable compressor",
+        "Aktifkan limiter": "Enable limiter",
+        "Gate": "Gate",
+        "EQ": "EQ",
+        "Kompresor": "Compressor",
+        "Limiter": "Limiter",
+        "Delay": "Delay",
+        "Delay menambah latensi sebesar waktunya.": "Delay adds latency equal to its time.",
+        "Ceiling": "Ceiling",
+        "Lookahead": "Lookahead",
+        "Lookahead menunda sinyal supaya batas tidak terlewati. Latensi bertambah sebesar nilainya.": "Lookahead delays the signal so the ceiling is not exceeded. Latency increases by this amount.",
+        "Sidechain": "Sidechain",
+        "Tanpa sidechain": "No sidechain",
+        "Tanpa plugin": "No plugin",
+        "Audio Unit": "Audio Unit",
+        "Buka Rantai FX…": "Open FX chain…",
+        "Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter.": "The FX chain stores several Audio Units per track, with order, bypass, and parameters.",
+        "Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi.": "Installing a plugin briefly stops audio. Plugin parameters cannot be set from the app yet.",
+        "Clip": "Clip",
+        "Clip. Klik untuk menghapus": "Clip. Click to clear",
+
+        // Pesan status
+        "Ditolak: indeks kanal tidak valid": "Rejected: invalid channel index",
+        "Gagal memulai perangkat": "Failed to start device",
+        "Gagal memulai rekaman": "Failed to start recording",
+        "Perangkat belum tersedia, mencoba lagi...": "Device not available yet, retrying...",
+        "Perangkat terputus. Hubungkan kembali lalu tekan Buka.": "Device disconnected. Reconnect it and press Open.",
+        "Perangkat terputus. Mencoba menyambung ulang setiap 2 detik...": "Device disconnected. Retrying every 2 seconds...",
+        "Preset berisi route yang tidak diizinkan, ditolak": "Preset contains disallowed routes, rejected",
+        "Route tidak valid": "Invalid route",
+        "Template butuh input dan output fisik": "Template needs physical input and output",
+        "Template tidak dikenal": "Unknown template",
+        "VC 1/2, VC 3/4, dan Loopback harus perangkat yang berbeda": "VC 1/2, VC 3/4, and Loopback must be different devices",
+        "Versi preset tidak dikenal": "Unknown preset version",
+        "Terbuka: %d in (%d fisik), %d out (%d fisik)": "Opened: %d in (%d physical), %d out (%d physical)",
+        "Tersambung kembali: %@": "Reconnected: %@",
+        "Preset \"%@\" disimpan": "Preset \"%@\" saved",
+        "Preset \"%@\" tidak ditemukan": "Preset \"%@\" not found",
+        "Template %@ diterapkan": "Template %@ applied",
+        "Solo dilepas": "Solo cleared",
+        "Solo aktif (hanya monitor): %@": "Solo active (monitor only): %@",
+        "Diagnostik disimpan: %@": "Diagnostics saved: %@",
+        "Rekaman disimpan: %@ (%d frame, terbuang %d)": "Recording saved: %@ (%d frames, dropped %d)",
+        "Peran tidak tersedia: %@.": "Role unavailable: %@.",
+        "Tidak tersedia: %@. Scene tidak diganti otomatis.": "Unavailable: %@. Scene is not replaced automatically.",
+        "%@ (tidak tersedia)": "%@ (unavailable)",
+        "%d kanal": "%d channels",
+        "%d sumber": "%d sources",
+        "Tidak berjalan: %@": "Not running: %@",
+        "Gagal menangkap %@. Beri izin Audio Capture di Pengaturan Sistem.": "Could not capture %@. Allow Audio Capture in System Settings.",
+        "Aplikasi %d": "App %d",
+        "Isolasi": "Isolate",
+        "Isolasi: audio aplikasi tidak lagi keluar di output asli, hanya lewat AudioHub. Berlaku setelah Buka.": "Isolate: the app's audio no longer plays on the main output, only through AudioHub. Applies after Open.",
+        "Aplikasi (tangkap audio)": "Apps (capture audio)",
+        "Pilih aplikasi yang audionya dijadikan sumber input. Berlaku setelah Buka. Saat pertama kali, macOS meminta izin Audio Capture.": "Choose apps whose audio becomes an input source. Applies after Open. The first time, macOS asks for Audio Capture permission.",
+        "Belum ada aplikasi yang memutar audio.": "No app is playing audio yet.",
+        "Tangkap aplikasi butuh VC 1/2 dipilih.": "Capturing apps needs VC 1/2 selected.",
+        "Gagal menyimpan preset:": "Failed to save preset:",
+        "Hapus preset \"%@\"?": "Delete preset \"%@\"?",
+        "Timpa preset \"%@\"?": "Overwrite preset \"%@\"?",
+        "Preset \"%@\" dimuat.": "Preset \"%@\" loaded.",
+        "Preset \"%@\" dihapus": "Preset \"%@\" deleted",
+        "Preset \"%@\" tidak cocok dengan jumlah kanal perangkat": "Preset \"%@\" does not match the device channel count",
+        "Preset \"%@\" tidak cocok dengan perangkat yang terbuka": "Preset \"%@\" does not match the open device",
+        "Preset \"%@\" tidak bisa dibaca": "Preset \"%@\" cannot be read",
+        "Merekam %@ ke %@": "Recording %@ to %@",
+    ]
 }

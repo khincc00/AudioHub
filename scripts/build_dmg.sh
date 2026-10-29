@@ -62,7 +62,7 @@ pkgbuild --root "$STAGE" \
     --sign "$INSTALLER_ID" \
     "$APP_PKG"
 
-# Paket driver. Postinstall memuat ulang coreaudiod agar perangkat avhub_virtual1 dan avhub_virtual2 langsung muncul.
+# Paket driver. Postinstall memuat ulang coreaudiod agar perangkat avhub_virtual1, avhub_virtual2, dan avhub_loopback langsung muncul.
 mkdir -p "$DRIVER_STAGE/Library/Audio/Plug-Ins/HAL" "$DRIVER_SCRIPTS"
 ditto --norsrc --noextattr --noacl "$DRIVER_BUNDLE" "$DRIVER_STAGE/Library/Audio/Plug-Ins/HAL/AVHubDriver.driver"
 xattr -cr "$DRIVER_STAGE"

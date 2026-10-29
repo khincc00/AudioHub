@@ -1,9 +1,10 @@
 # AVHub Driver v2
 
-Driver audio virtual untuk macOS dengan dua perangkat loopback stereo:
+Driver audio virtual untuk macOS dengan tiga perangkat loopback stereo:
 
-- **avhub_virtual1**
-- **avhub_virtual2**
+- **avhub_virtual1** (VC 1/2 di AudioHub)
+- **avhub_virtual2** (VC 3/4 di AudioHub)
+- **avhub_loopback** (Loopback 1/2 di AudioHub)
 
 Audio yang dikirim ke output salah satu perangkat bisa dibaca kembali dari input perangkat yang sama. Contoh: AudioHub mengirim audio ke `avhub_virtual2`, lalu OBS atau TikTok LIVE Studio membacanya dari `avhub_virtual2` sebagai mikrofon.
 
@@ -13,14 +14,14 @@ Ditulis dari nol berdasarkan antarmuka `AudioServerPlugIn.h` dari SDK Apple. Tid
 
 | Fitur | Keterangan |
 |---|---|
-| Dua perangkat stereo | Setiap perangkat: 1 stream output + 1 stream input, 2 kanal, float32 interleaved |
+| Tiga perangkat stereo | Setiap perangkat: 1 stream output + 1 stream input, 2 kanal, float32 interleaved |
 | Sample rate | 13 rate: 8, 16, 24, 44,1, 48, 88,2, 96, 176,4, 192, 352,8, 384, 705,6, 768 kHz |
 | Ukuran buffer | Default 512 frame, bisa diubah 16–4096 |
 | Volume master | Kurva dB linear: skalar 0–1 = -64 sampai 0 dB. Input dan output memakai nilai yang sama |
 | Mute | Kontrol mute input dan output, memakai nilai master yang sama; saat aktif, input membaca nol |
 | Koreksi pitch | Kontrol level `Pitch` (0–1, 0,5 netral), mengubah clock ±1 % |
 | Clock source | Selector `Clock Source` dengan dua item: 0 = Nominal (default), 1 = Pitch Adjusted |
-| Objek Box | Satu Box (`com.avhub.driver.box`) yang memuat kedua perangkat, dengan properti identify |
+| Objek Box | Satu Box (`com.avhub.driver.box`) yang memuat ketiga perangkat, dengan properti identify |
 | Tulis terlambat | Output yang sudah lewat dari waktu sekarang ditolak (status `'what'`), tidak ditulis ke ring |
 | Loopback | Input membaca sample time yang sama dengan output; driver tidak menambah offset |
 
@@ -49,14 +50,14 @@ sudo sh uninstall.sh        # untuk menghapus
 system_profiler SPAudioDataType | grep avhub
 ```
 
-Kedua perangkat `avhub_virtual1` dan `avhub_virtual2` harus muncul.
+Ketiga perangkat `avhub_virtual1`, `avhub_virtual2`, dan `avhub_loopback` harus muncul.
 
 ## Spesifikasi
 
 | Properti | Nilai |
 |---|---|
 | Bundle ID | `com.avhub.driver` |
-| Nama dan UID perangkat | `avhub_virtual1`, `avhub_virtual2` |
+| Nama dan UID perangkat | `avhub_virtual1`, `avhub_virtual2`, `avhub_loopback` (ID 10, 20, 30) |
 | Pabrikan | AVHub |
 | Sample rate | 13 rate, 8 kHz sampai 768 kHz (default 48 kHz) |
 | Format | 2 kanal (stereo), float32 interleaved |
@@ -64,7 +65,7 @@ Kedua perangkat `avhub_virtual1` dan `avhub_virtual2` harus muncul.
 | Zero timestamp period | 16384 frame |
 | Latensi yang dilaporkan | 0 frame |
 | Kontrol | Volume (dua kontrol input, dua output, dB linear -64..0) dan mute (input dan output). Pitch dan clock source, sisi global |
-| Box | `com.avhub.driver.box`, berisi `avhub_virtual1` dan `avhub_virtual2` |
+| Box | `com.avhub.driver.box`, berisi `avhub_virtual1`, `avhub_virtual2`, dan `avhub_loopback` |
 | Pitch dan clock source | Control object: pitch (level, 0–1) dan clock source (selector clck). Keduanya di sisi global |
 | Penandatanganan | ad-hoc secara default; Developer ID lewat `SIGN_IDENTITY` |
 | Arsitektur | Intel (x86_64) dan Apple Silicon (arm64) |
@@ -97,7 +98,7 @@ Mengubah keduanya tidak memulai timeline baru, jadi tidak ada lompatan waktu. Ko
 
 ### Box dan identify
 
-Kedua perangkat dikelompokkan dalam satu Box. Box memiliki properti identify (`kAudioObjectPropertyIdentify`) yang bisa diset. Driver menerimanya tanpa efek tampilan, karena tidak ada lampu atau panel yang bisa dinyalakan.
+Ketiga perangkat dikelompokkan dalam satu Box. Box memiliki properti identify (`kAudioObjectPropertyIdentify`) yang bisa diset. Driver menerimanya tanpa efek tampilan, karena tidak ada lampu atau panel yang bisa dinyalakan.
 
 ### Tulis terlambat
 

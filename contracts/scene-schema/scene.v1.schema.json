@@ -12,6 +12,7 @@
     "deviceName": { "type": "string" },
     "useVirtual": { "type": "boolean" },
     "useVirtual2": { "type": "boolean" },
+    "useVirtual3": { "type": "boolean", "description": "Opsional. Loopback 1/2. Preset lama tidak memilikinya." },
     "bindings": {
       "type": "array",
       "description": "Peran logis dan perangkat yang dipakai. Perangkat yang hilang ditandai di aplikasi, tidak diganti otomatis.",

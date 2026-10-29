@@ -23,4 +23,4 @@ chmod -R go-w "$DST"
 
 killall coreaudiod 2>/dev/null || true
 echo "Driver terpasang di $DST"
-echo "Jika avhub_virtual1 dan avhub_virtual2 belum muncul, restart Mac."
+echo "Jika avhub_virtual1, avhub_virtual2, dan avhub_loopback belum muncul, restart Mac."

@@ -29,8 +29,8 @@ Acuan: daftar fitur yang diberikan pengguna dari panduan PS22. Status per butir:
 | Kanal PS22 | Padanan AudioHub | Status |
 |---|---|---|
 | MIC In 1 / MIC In 2 | Fisik In 1 / 2 | Ada |
-| VC In 1/2, VC In 3/4 | Virtual In 1 sampai 4 (dua perangkat) | Ada |
-| Loopback 1/2 | Virtual In dari AudioHub Virtual 2 | Ada, perlu uji langsung |
+| VC In 1/2, VC In 3/4 | Virtual In 1 sampai 4 (avhub_virtual1 dan avhub_virtual2) | Ada |
+| Loopback 1/2 | Virtual In dari avhub_loopback (perangkat virtual ketiga) | Ada, perlu uji langsung. Belum diuji di mesin dengan driver terpasang |
 | HP Out 1/2 | Fisik Out 1 / 2 | Ada |
 | VC Out 1/2, VC Out 3/4 | Virtual Out | Ada |
 

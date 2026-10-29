@@ -167,14 +167,14 @@ int main(void)
     UInt32 size = 0;
     AudioObjectPropertyAddress devListAddr = Addr(kAudioPlugInPropertyDeviceList, kAudioObjectPropertyScopeGlobal);
     (*drv)->GetPropertyDataSize(drv, kAudioObjectPlugInObject, 0, &devListAddr, 0, NULL, &size);
-    CHECK(size == 2 * sizeof(AudioObjectID), "DeviceList berisi 2 perangkat (size=%u)", size);
+    CHECK(size == 3 * sizeof(AudioObjectID), "DeviceList berisi 3 perangkat (size=%u)", size);
 
-    AudioObjectID devs[2] = { 0, 0 };
+    AudioObjectID devs[3] = { 0, 0, 0 };
     Get(drv, kAudioObjectPlugInObject, devListAddr, 0, NULL, devs, sizeof devs, &size);
-    CHECK(devs[0] == 10 && devs[1] == 20, "ID perangkat: %u dan %u", devs[0], devs[1]);
+    CHECK(devs[0] == 10 && devs[1] == 20 && devs[2] == 30, "ID perangkat: %u, %u, %u", devs[0], devs[1], devs[2]);
 
-    const char *wantNames[2] = { "avhub_virtual1", "avhub_virtual2" };
-    for (int i = 0; i < 2; i++) {
+    const char *wantNames[3] = { "avhub_virtual1", "avhub_virtual2", "avhub_loopback" };
+    for (int i = 0; i < 3; i++) {
         CFStringRef name = NULL;
         Get(drv, devs[i], Addr(kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal), 0, NULL, &name, sizeof name, &size);
         char buf[64];
@@ -201,9 +201,12 @@ int main(void)
     AudioObjectPropertyAddress tAddr = Addr(kAudioPlugInPropertyTranslateUIDToDevice, kAudioObjectPropertyScopeGlobal);
     Get(drv, kAudioObjectPlugInObject, tAddr, sizeof q, &q, &translated, sizeof translated, &size);
     CHECK(translated == 20, "avhub_virtual2 -> %u (harus 20)", translated);
+    q = CFSTR("avhub_loopback");
+    Get(drv, kAudioObjectPlugInObject, tAddr, sizeof q, &q, &translated, sizeof translated, &size);
+    CHECK(translated == 30, "avhub_loopback -> %u (harus 30)", translated);
 
-    printf("Dua perangkat stereo\n");
-    for (int i = 0; i < 2; i++) {
+    printf("Tiga perangkat stereo\n");
+    for (int i = 0; i < 3; i++) {
         AudioObjectID dev = devs[i];
         AudioBufferList abl;
         Get(drv, dev, Addr(kAudioDevicePropertyStreamConfiguration, kAudioObjectPropertyScopeOutput), 0, NULL, &abl, sizeof abl, &size);
@@ -320,7 +323,8 @@ int main(void)
 
     AudioObjectID boxDevs[4] = { 0 };
     Get(drv, kBoxObjectID, Addr(kAudioBoxPropertyDeviceList, kAudioObjectPropertyScopeGlobal), 0, NULL, boxDevs, sizeof boxDevs, &size);
-    CHECK(size == 2 * sizeof(AudioObjectID) && boxDevs[0] == 10 && boxDevs[1] == 20, "Daftar perangkat Box = 10 dan 20");
+    CHECK(size == 3 * sizeof(AudioObjectID) && boxDevs[0] == 10 && boxDevs[1] == 20 && boxDevs[2] == 30,
+          "Daftar perangkat Box = 10, 20, dan 30");
 
     UInt32 boxAcquired = 0, boxAudio = 0, boxVideo = 1;
     Get(drv, kBoxObjectID, Addr(kAudioBoxPropertyAcquired, kAudioObjectPropertyScopeGlobal), 0, NULL, &boxAcquired, sizeof boxAcquired, &size);

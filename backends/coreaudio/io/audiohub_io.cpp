@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr int kMaxCh = 8;
+constexpr int kMaxCh = 32;   // 2 fisik + 3 virtual + hingga 4 tap (2 kanal per tap), dengan ruang untuk interface lebih besar
 constexpr int kMaxFx = AH_FX_SLOTS;
 constexpr int kMaxFrames = 4096;
 // Buffer yang harus sama di semua sub-device agregat. PS22 dan perangkat virtual berjalan di 512 frame.
@@ -26,6 +26,8 @@ constexpr UInt32 kPreferredBufferFrames = 512;
 // UID agregat yang terlihat di Core Audio. Dipakai tetap supaya DAW bisa mengingat pilihannya.
 // Agregat dengan UID berawalan ini dianggap milik AudioHub dan dihapus saat dibuka atau ditutup.
 constexpr const char* kAggregateUID = "com.audiohub.app.aggregate";
+// Agregat private untuk engine ketika tap aplikasi dipakai. Agregat publik (kAggregateUID) tetap ada untuk DAW.
+constexpr const char* kEngineAggregateUID = "com.audiohub.app.aggregate.engine";
 
 AudioObjectPropertyAddress addr(AudioObjectPropertySelector sel, AudioObjectPropertyScope scope = kAudioObjectPropertyScopeGlobal) {
     return {sel, scope, kAudioObjectPropertyElementMain};
@@ -162,7 +164,11 @@ struct AHIO {
     int nIn = 0, nOut = 0;
     int physIn = 0, physOut = 0;
     // Jumlah kanal tiap virtual device, per sisi. Nol jika device tidak dipakai.
-    int virt1In = 0, virt1Out = 0, virt2In = 0, virt2Out = 0;
+    int virt1In = 0, virt1Out = 0, virt2In = 0, virt2Out = 0, virt3In = 0, virt3Out = 0;
+    // Kanal input dari tap aplikasi (CATapDescription), setelah kanal virtual 3.
+    int tapIn = 0;
+    // Agregat publik untuk DAW. Sama dengan aggregate jika tidak ada tap.
+    AudioObjectID dawAggregate = kAudioObjectUnknown;
     uint32_t bufferFrames = 0;
     double sampleRate = 0;
     // Perangkat fisik utama (bukan agregat). Dipakai untuk latensi dan kontrol hardware.
@@ -296,8 +302,9 @@ static void destroyStaleAggregates() {
     }
 }
 
-static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUID1, const char* virtualUID2) {
-    destroyStaleAggregates();
+static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUID1, const char* virtualUID2,
+                                     const char* virtualUID3, const char* const* tapUIDs, int tapCount,
+                                     const char* aggUIDStr, const char* aggName, bool isPrivate) {
     auto masterUIDAddr = addr(kAudioDevicePropertyDeviceUID);
     CFStringRef masterUID = nullptr;
     UInt32 sz = sizeof(masterUID);
@@ -312,7 +319,7 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
     // Clock master = perangkat virtual 1, supaya clock agregat tidak mengikuti PS22.
     // PS22 tetap sub-device pertama agar urutan kanal tidak berubah,
     // dengan drift compensation karena clock-nya tidak lagi menjadi master.
-    CFMutableArrayRef subList = CFArrayCreateMutable(nullptr, 3, &kCFTypeArrayCallBacks);
+    CFMutableArrayRef subList = CFArrayCreateMutable(nullptr, 4, &kCFTypeArrayCallBacks);
     CFDictionaryRef ps = makeSub(masterUID, true);
     CFArrayAppendValue(subList, ps);
     CFStringRef vUID1 = CFStringCreateWithCString(nullptr, virtualUID1, kCFStringEncodingUTF8);
@@ -325,15 +332,34 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
         vd2 = makeSub(vUID2, true);
         CFArrayAppendValue(subList, vd2);
     }
+    CFStringRef vUID3 = nullptr;
+    CFDictionaryRef vd3 = nullptr;
+    if (virtualUID3 && virtualUID3[0]) {
+        vUID3 = CFStringCreateWithCString(nullptr, virtualUID3, kCFStringEncodingUTF8);
+        vd3 = makeSub(vUID3, true);
+        CFArrayAppendValue(subList, vd3);
+    }
     CFArrayRef subs = subList;
+    // Tap aplikasi masuk sebagai daftar tap, bukan sub-device. Drift compensation aktif seperti sub-device virtual.
+    CFMutableArrayRef tapList = CFArrayCreateMutable(nullptr, tapCount > 0 ? tapCount : 1, &kCFTypeArrayCallBacks);
+    for (int k = 0; k < tapCount; k++) {
+        CFStringRef tUID = CFStringCreateWithCString(nullptr, tapUIDs[k], kCFStringEncodingUTF8);
+        CFDictionaryRef td = makeSub(tUID, true);
+        CFArrayAppendValue(tapList, td);
+        CFRelease(td);
+        CFRelease(tUID);
+    }
     // Agregat terlihat (private = false) agar DAW bisa memilihnya. UID lama dengan nama yang sama sudah
     // dihapus di destroyStaleAggregates, karena HAL menolak membuat UID yang sudah ada (kAudioHardwareIllegalOperationError).
-    CFStringRef aggUID = CFStringCreateWithCString(nullptr, kAggregateUID, kCFStringEncodingUTF8);
+    CFStringRef aggUID = CFStringCreateWithCString(nullptr, aggUIDStr, kCFStringEncodingUTF8);
+    CFStringRef aggNameRef = CFStringCreateWithCString(nullptr, aggName, kCFStringEncodingUTF8);
     // "master" saja tidak cukup: Core Audio memilih clock dari perangkat fisik jika "clock" tidak diset.
     // "clock" mengendalikan time base agregat (AudioHardware.h), jadi diset eksplisit ke virtual 1.
-    const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master"), CFSTR("clock")};
-    const void* vals[] = {CFSTR("AudioHub Aggregate"), aggUID, kCFBooleanFalse, subs, vUID1, vUID1};
-    CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 6, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    const void* keys[] = {CFSTR("name"), CFSTR("uid"), CFSTR("private"), CFSTR("subdevices"), CFSTR("master"), CFSTR("clock"), CFSTR("taps")};
+    // Agregat dengan tap harus private. Tanpa tap tetap terlihat agar DAW bisa memilihnya.
+    const void* vals[] = {aggNameRef, aggUID, isPrivate ? kCFBooleanTrue : kCFBooleanFalse, subs, vUID1, vUID1, tapList};
+    CFDictionaryRef desc = CFDictionaryCreate(nullptr, keys, vals, 7, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFRelease(tapList);
     AudioObjectID agg = kAudioObjectUnknown;
     OSStatus st = AudioHardwareCreateAggregateDevice(desc, &agg);
     CFRelease(desc);
@@ -343,6 +369,7 @@ static AudioObjectID createAggregate(AudioObjectID master, const char* virtualUI
     CFRelease(vd1);
     CFRelease(vUID1);
     if (vd2) { CFRelease(vd2); CFRelease(vUID2); }
+    if (vd3) { CFRelease(vd3); CFRelease(vUID3); }
     CFRelease(masterUID);
     return st == noErr ? agg : kAudioObjectUnknown;
 }
@@ -361,48 +388,80 @@ AHIO* ah_io_open(const char* deviceNameContains, char* errBuf, int errLen) {
 }
 
 AHIO* ah_io_open_with_virtual(const char* masterNameContains, const char* virtualUID, char* errBuf, int errLen) {
-    return ah_io_open_with_virtuals(masterNameContains, virtualUID, nullptr, errBuf, errLen);
+    return ah_io_open_with_virtuals(masterNameContains, virtualUID, nullptr, nullptr, nullptr, 0, errBuf, errLen);
 }
 
-AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtualUID1, const char* virtualUID2, char* errBuf, int errLen) {
+AHIO* ah_io_open_with_virtuals(const char* masterNameContains, const char* virtualUID1, const char* virtualUID2,
+                               const char* virtualUID3, const char* const* tapUIDs, int tapCount,
+                               char* errBuf, int errLen) {
     AudioObjectID master = findDevice(masterNameContains);
     if (master == kAudioObjectUnknown) {
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Perangkat fisik tidak ditemukan");
         return nullptr;
     }
+    bool use2 = virtualUID2 && virtualUID2[0];
+    bool use3 = virtualUID3 && virtualUID3[0];
     // Sample rate harus sama di master dan virtual sebelum agregat dibuat. Satu perangkat yang menolak menggagalkan pembukaan.
     if (!applyRate(master, gPrefSampleRate, errBuf, errLen)) return nullptr;
     if (!applyRate(deviceForUID(virtualUID1), gPrefSampleRate, errBuf, errLen)) return nullptr;
-    if (virtualUID2 && virtualUID2[0] && !applyRate(deviceForUID(virtualUID2), gPrefSampleRate, errBuf, errLen)) return nullptr;
-    AudioObjectID agg = createAggregate(master, virtualUID1, virtualUID2);
-    if (agg == kAudioObjectUnknown) {
+    if (use2 && !applyRate(deviceForUID(virtualUID2), gPrefSampleRate, errBuf, errLen)) return nullptr;
+    if (use3 && !applyRate(deviceForUID(virtualUID3), gPrefSampleRate, errBuf, errLen)) return nullptr;
+    // Agregat DAW (publik) selalu dibuat. Dengan tap, engine memakai agregat private tambahan yang berisi tap.
+    destroyStaleAggregates();
+    AudioObjectID dawAgg = createAggregate(master, virtualUID1, use2 ? virtualUID2 : nullptr, use3 ? virtualUID3 : nullptr,
+                                           nullptr, 0, kAggregateUID, "AudioHub Aggregate", false);
+    if (dawAgg == kAudioObjectUnknown) {
         if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Gagal membuat aggregate (cek UID virtual device)");
         return nullptr;
+    }
+    AudioObjectID agg = dawAgg;
+    if (tapCount > 0) {
+        agg = createAggregate(master, virtualUID1, use2 ? virtualUID2 : nullptr, use3 ? virtualUID3 : nullptr,
+                              tapUIDs, tapCount, kEngineAggregateUID, "AudioHub Engine", true);
+        if (agg == kAudioObjectUnknown) {
+            AudioHardwareDestroyAggregateDevice(dawAgg);
+            if (errBuf && errLen > 0) snprintf(errBuf, errLen, "%s", "Gagal membuat aggregate tangkap aplikasi");
+            return nullptr;
+        }
     }
     usleep(800000);  // beri waktu HAL menerbitkan aggregate
     // Semua sub-device harus memakai buffer yang sama sebelum IO dimulai, termasuk perangkat virtual.
     // Jika tidak, agregat berjalan di 192 sementara sub-device tetap 512, dan HAL menyisipkan klik.
     setBufferFrames(master, gPrefBufferFrames);
     setBufferFrames(deviceForUID(virtualUID1), gPrefBufferFrames);
-    if (virtualUID2 && virtualUID2[0]) setBufferFrames(deviceForUID(virtualUID2), gPrefBufferFrames);
+    if (use2) setBufferFrames(deviceForUID(virtualUID2), gPrefBufferFrames);
+    if (use3) setBufferFrames(deviceForUID(virtualUID3), gPrefBufferFrames);
     setBufferFrames(agg, gPrefBufferFrames);
+    if (dawAgg != agg) setBufferFrames(dawAgg, gPrefBufferFrames);
     AHIO* io = openDevice(agg, agg, errBuf, errLen);
-    if (io) {
+    if (!io) {
+        if (dawAgg != agg) AudioHardwareDestroyAggregateDevice(dawAgg);
+    } else {
+        io->dawAggregate = dawAgg;
         // Kanal fisik = kanal master; sisanya dari sub-device virtual
         io->physIn = channelsOf(master, kAudioObjectPropertyScopeInput);
         io->physOut = channelsOf(master, kAudioObjectPropertyScopeOutput);
         io->master = master;
         io->inLatency = deviceLatency(master, kAudioObjectPropertyScopeInput);
         io->outLatency = deviceLatency(master, kAudioObjectPropertyScopeOutput);
-        // Urutan kanal di agregat: fisik, virtual 1, virtual 2
+        // Urutan kanal di agregat: fisik, virtual 1, virtual 2, virtual 3
         AudioObjectID v1 = deviceForUID(virtualUID1);
         io->virt1In = channelsOf(v1, kAudioObjectPropertyScopeInput);
         io->virt1Out = channelsOf(v1, kAudioObjectPropertyScopeOutput);
-        if (virtualUID2 && virtualUID2[0]) {
+        if (use2) {
             AudioObjectID v2 = deviceForUID(virtualUID2);
             io->virt2In = channelsOf(v2, kAudioObjectPropertyScopeInput);
             io->virt2Out = channelsOf(v2, kAudioObjectPropertyScopeOutput);
         }
+        if (use3) {
+            AudioObjectID v3 = deviceForUID(virtualUID3);
+            io->virt3In = channelsOf(v3, kAudioObjectPropertyScopeInput);
+            io->virt3Out = channelsOf(v3, kAudioObjectPropertyScopeOutput);
+        }
+        // Sisa kanal input agregat adalah kanal tap aplikasi
+        int totalIn = channelsOf(agg, kAudioObjectPropertyScopeInput);
+        io->tapIn = totalIn - io->physIn - io->virt1In - io->virt2In - io->virt3In;
+        if (io->tapIn < 0) io->tapIn = 0;
     }
     return io;
 }
@@ -464,6 +523,8 @@ void ah_io_close(AHIO* io) {
     io->recRing = nullptr;
     if (io->proc) AudioDeviceDestroyIOProcID(io->dev, io->proc);
     if (io->aggregate != kAudioObjectUnknown) AudioHardwareDestroyAggregateDevice(io->aggregate);
+    if (io->dawAggregate != kAudioObjectUnknown && io->dawAggregate != io->aggregate)
+        AudioHardwareDestroyAggregateDevice(io->dawAggregate);
     ah_engine_destroy(io->engine);
     delete io;
 }
@@ -682,7 +743,8 @@ int ah_io_inputs(AHIO* io) { return io ? io->nIn : 0; }
 int ah_io_outputs(AHIO* io) { return io ? io->nOut : 0; }
 
 static audiohub::ChannelLayout layoutOf(const AHIO* io) {
-    return {io->physIn, io->virt1In, io->virt2In, io->physOut, io->virt1Out, io->virt2Out};
+    return {io->physIn, io->virt1In, io->virt2In, io->virt3In,
+            io->physOut, io->virt1Out, io->virt2Out, io->virt3Out, io->tapIn};
 }
 
 int ah_io_route_allowed(AHIO* io, int input, int output) {
@@ -698,19 +760,25 @@ void ah_io_channel_owner(AHIO* io, int output, int channel, int* owner, int* loc
     int phys = output ? L.physOut : L.physIn;
     int v1 = output ? L.virt1Out : L.virt1In;
     int v2 = output ? L.virt2Out : L.virt2In;
-    if (channel < 0 || channel >= phys + v1 + v2) return;
-    int o = audiohub::channelOwner(channel, phys, v1);
+    int v3 = output ? L.virt3Out : L.virt3In;
+    int tap = output ? 0 : L.tapIn;  // tap hanya di sisi input
+    if (channel < 0 || channel >= phys + v1 + v2 + v3 + tap) return;
+    int o = audiohub::channelOwner(channel, phys, v1, v2, v3);
     if (owner) *owner = o;
-    if (local) *local = o == 0 ? channel + 1 : (o == 1 ? channel - phys + 1 : channel - phys - v1 + 1);
+    // Nomor kanal dihitung dari awal perangkat pemiliknya
+    int start = o == 0 ? 0 : (o == 1 ? phys : (o == 2 ? phys + v1 : (o == 3 ? phys + v1 + v2 : phys + v1 + v2 + v3)));
+    if (local) *local = channel - start + 1;
 }
 
 int ah_io_set_route(AHIO* io, int input, int output, int enabled, float sendDb) {
     if (!io) return -1;
-    // Virtual → virtual ditolak jika dari perangkat virtual yang sama (akan membentuk loop di driver)
     if (!audiohub::routeAllowed(input, output, layoutOf(io))) return -1;
+    // Route dalam perangkat virtual yang sama tidak mengirim audio. Statusnya hanya menandai perangkat aktif.
+    if (audiohub::routeLoops(input, output, layoutOf(io))) enabled = 0;
     ah_engine_set_route(io->engine, input, output, enabled, sendDb);
     return 0;
 }
+
 
 void ah_io_set_output(AHIO* io, int output, float gainDb, int mute) {
     if (io) ah_engine_set_output(io->engine, output, gainDb, mute);
