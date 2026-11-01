@@ -3,6 +3,26 @@ import CoreAudio
 import Foundation
 import SwiftUI
 
+// Edisi demo dibangun dengan `DEMO=1 sh apps/macos/AudioHub/build.sh`, yang menambahkan -D DEMO.
+// Edisi penuh tidak terpengaruh. Batasan ini dipakai di engine dan di UI.
+enum Edition {
+    #if DEMO
+    static let isDemo = true
+    #else
+    static let isDemo = false
+    #endif
+
+    // Jumlah sel route yang boleh aktif sekaligus. Delapan cukup untuk mic ke monitor dan ke aplikasi panggilan.
+    static var maxActiveRoutes: Int { isDemo ? 8 : Int.max }
+    static let contactURL = URL(string: "https://khincreator.com")!  // info langganan dari lencana DEMO
+    static let purchaseURL = URL(string: "http://lynk.id/khincc/y856pq2k9w9p/checkout")!  // checkout langganan
+    static var allowsExtraVirtuals: Bool { !isDemo }  // VC 3/4 dan Loopback; demo hanya VC 1/2
+    static var allowsAppCapture: Bool { !isDemo }
+    static var allowsDynamics: Bool { !isDemo }    // gate, EQ, kompresor, delay, limiter, rantai FX
+    static var allowsRecording: Bool { !isDemo }
+    static var allowsPresets: Bool { !isDemo }     // preset dan template
+}
+
 // MARK: - Parameter DSP
 
 struct GateFx: Codable {
@@ -71,7 +91,8 @@ struct ChannelFx: Codable {
     var eq = EqFx()
     var comp = CompFx()
     var delay = DelayFx()
-    var insert = ""           // nama effect Audio Unit, kosong = tanpa plugin
+    var insert = ""           // nama effect Audio Unit atau VST2, kosong = tanpa plugin
+    var insertState = ""      // state plugin (base64): parameter AU atau VST2, dipulihkan saat preset dimuat
     var pan: Float = 0        // −1 kiri … +1 kanan, untuk pasangan output
 
     init() {}
@@ -84,6 +105,7 @@ struct ChannelFx: Codable {
         comp = try c.decodeIfPresent(CompFx.self, forKey: .comp) ?? CompFx()
         delay = try c.decodeIfPresent(DelayFx.self, forKey: .delay) ?? DelayFx()
         insert = try c.decodeIfPresent(String.self, forKey: .insert) ?? ""
+        insertState = try c.decodeIfPresent(String.self, forKey: .insertState) ?? ""
         pan = try c.decodeIfPresent(Float.self, forKey: .pan) ?? 0
     }
 }
@@ -352,6 +374,10 @@ final class EngineController: ObservableObject {
     @Published var tapIsolateBundleIDs: [String] = UserDefaults.standard.stringArray(forKey: "tapIsolateBundleIDs") ?? [] {
         didSet { UserDefaults.standard.set(tapIsolateBundleIDs, forKey: "tapIsolateBundleIDs") }
     }
+    // File plugin VST2 (.vst atau .dylib) yang dipilih pengguna. Muncul di daftar plugin sebagai "VST2: <nama file>".
+    @Published var vst2Paths: [String] = UserDefaults.standard.stringArray(forKey: "vst2Paths") ?? [] {
+        didSet { UserDefaults.standard.set(vst2Paths, forKey: "vst2Paths") }
+    }
     // Tap yang aktif untuk sesi berjalan, sesuai urutan kanal tap di agregat.
     private(set) var appTaps: [AppTap] = []
     // Catatan tap dari pembukaan terakhir. Ditampilkan setelah status pembukaan.
@@ -363,7 +389,8 @@ final class EngineController: ObservableObject {
 
     // Pilihan virtual yang terisi, dengan perannya, urut VC 1/2, VC 3/4, lalu Loopback.
     var selectedVirtuals: [(role: VirtualRole, uid: String)] {
-        [(.vc1, virtualUID1), (.vc2, virtualUID2), (.loopback, virtualUID3)].filter { !$0.uid.isEmpty }
+        [(.vc1, virtualUID1), (.vc2, virtualUID2), (.loopback, virtualUID3)]
+            .filter { !$0.uid.isEmpty && (Edition.allowsExtraVirtuals || $0.role == .vc1) }
     }
 
     // Perangkat virtual yang bisa dipilih untuk satu peran: transport virtual, punya input dan output,
@@ -405,6 +432,7 @@ final class EngineController: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.close()
         }
+        ah_io_vst2_set_paths(vst2Paths.joined(separator: "\n"))
         refreshDevices()
         installDeviceListener()
     }
@@ -430,8 +458,18 @@ final class EngineController: ObservableObject {
 
     func refreshDevices() {
         devices = systemDevices()
+        pickDemoVirtualIfNeeded()
         refreshMissing()
         loadCapabilities()
+    }
+
+    // Edisi demo hanya memakai VC 1/2. Jika belum ada yang dipilih, pilih avhub_virtual1, atau perangkat virtual non-Loopback pertama.
+    private func pickDemoVirtualIfNeeded() {
+        guard Edition.isDemo, virtualUID1.isEmpty else { return }
+        let candidates = virtualCandidates(excluding: [])
+        let pick = candidates.first { $0.name.lowercased().contains("virtual1") }
+            ?? candidates.first { !$0.name.lowercased().contains("loopback") }
+        if let pick { virtualUID1 = pick.uid }
     }
 
     // Rate dan buffer yang didukung perangkat utama. Pilihan di luar daftar ini tidak ditawarkan.
@@ -709,7 +747,7 @@ final class EngineController: ObservableObject {
         let processes = audioProcesses()
         var notRunning: [String] = []
         var failed: [String] = []
-        for bundle in tapBundleIDs.prefix(4) {
+        for bundle in (Edition.allowsAppCapture ? tapBundleIDs : []).prefix(4) {
             guard let proc = processes.first(where: { $0.bundleID == bundle }) else {
                 notRunning.append(bundle)
                 continue
@@ -916,6 +954,10 @@ final class EngineController: ObservableObject {
             status = L10n.t("Ditolak: indeks kanal tidak valid")
             return
         }
+        if on && !routes[i][j] && routes.joined().filter({ $0 }).count >= Edition.maxActiveRoutes {
+            status = L10n.f("Edisi demo: maksimal %d route aktif", Edition.maxActiveRoutes)
+            return
+        }
         routes[i][j] = on
         pushRoute(i, j)
     }
@@ -952,6 +994,7 @@ final class EngineController: ObservableObject {
     // MARK: - Rekaman
 
     func startRecording(output j: Int) {
+        guard Edition.allowsRecording else { status = L10n.t("Fitur ini tidak tersedia di edisi demo"); return }
         guard let h = io, recordingOutput == nil else { return }
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let url = appSupport.appendingPathComponent("rekaman-\(stamp).wav")
@@ -1081,22 +1124,105 @@ final class EngineController: ObservableObject {
         pushOutputFx(j)
     }
 
-    // Memasang atau melepas plugin Audio Unit pada satu input. Butuh IO berhenti sebentar.
-    func setInsert(_ i: Int, _ name: String) {
+    // Memasang atau melepas plugin (Audio Unit atau VST2) pada satu input. Butuh IO berhenti sebentar.
+    // state, jika ada, dipulihkan setelah plugin dimuat (parameter dan pengaturan dari preset).
+    func setInsert(_ i: Int, _ name: String, state: Data? = nil) {
         guard let h = io, i < fx.count else { return }
         let wasRunning = running
         if wasRunning { haltIO() }
         _ = ah_io_insert_unload(h, Int32(i))
         if name.isEmpty {
             fx[i].insert = ""
+            fx[i].insertState = ""
         } else if ah_io_insert_load(h, Int32(i), name) == 0 {
             fx[i].insert = name
-            status = "Plugin \(name) dipasang di \(inLabel(i))"
+            if let state, !state.isEmpty {
+                let bytes = [UInt8](state)
+                _ = bytes.withUnsafeBufferPointer { ah_io_fx_state_set(h, Int32(i), 0, $0.baseAddress, Int32($0.count)) }
+            }
+            status = L10n.f("Plugin %@ dipasang di %@", name, inLabel(i))
         } else {
             fx[i].insert = ""
-            status = "Gagal memuat plugin \(name)"
+            fx[i].insertState = ""
+            status = L10n.f("Gagal memuat plugin %@", name)
         }
         if wasRunning { start() }
+    }
+
+    // Parameter satu plugin pada input i (slot 0). Kosong jika tidak ada plugin atau IO belum dibuka.
+    struct PluginParam: Identifiable {
+        let id: UInt32
+        let index: Int
+        let name: String
+        let minValue: Float
+        let maxValue: Float
+        var value: Float
+        var text: String
+    }
+
+    func pluginParams(_ i: Int) -> [PluginParam] {
+        guard let h = io, i < fx.count, !fx[i].insert.isEmpty else { return [] }
+        let n = Int(ah_io_fx_param_count(h, Int32(i), 0))
+        guard n > 0 else { return [] }
+        return (0..<n).compactMap { k -> PluginParam? in
+            var p = AHFxParam()
+            guard ah_io_fx_param_get(h, Int32(i), 0, Int32(k), &p) == 0 else { return nil }
+            let name = withUnsafeBytes(of: p.name) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
+            return PluginParam(id: p.id, index: k, name: name, minValue: p.minValue, maxValue: p.maxValue,
+                               value: p.value, text: pluginParamText(i, k))
+        }
+    }
+
+    func pluginParamText(_ i: Int, _ index: Int) -> String {
+        guard let h = io else { return "" }
+        var buf = [CChar](repeating: 0, count: 128)
+        guard ah_io_fx_param_text(h, Int32(i), 0, Int32(index), &buf, 128) == 0 else { return "" }
+        return String(cString: buf)
+    }
+
+    func setPluginParam(_ i: Int, id: UInt32, value: Float) {
+        guard let h = io else { return }
+        _ = ah_io_fx_param_set(h, Int32(i), 0, id, value)
+    }
+
+    // State plugin pada input i dalam bentuk base64, untuk disimpan di preset. Kosong jika tidak ada plugin.
+    private func pluginStateBase64(_ i: Int) -> String {
+        guard let h = io, !fx[i].insert.isEmpty else { return "" }
+        let size = ah_io_fx_state_get(h, Int32(i), 0, nil, 0)
+        guard size > 0 else { return "" }
+        var buf = [UInt8](repeating: 0, count: Int(size))
+        let got = buf.withUnsafeMutableBufferPointer { ah_io_fx_state_get(h, Int32(i), 0, $0.baseAddress, size) }
+        guard got == size else { return "" }
+        return Data(buf).base64EncodedString()
+    }
+
+    // Nama plugin VST2 di daftar, sama dengan yang dibuat backend: "VST2: <nama file tanpa akhiran>".
+    static func vst2DisplayName(_ path: String) -> String {
+        let base = (path as NSString).lastPathComponent
+        for suffix in [".vst.dylib", ".vst", ".dylib"] where base.hasSuffix(suffix) {
+            return "VST2: " + String(base.dropLast(suffix.count))
+        }
+        return "VST2: " + base
+    }
+
+    func addVst2Plugin(_ path: String) {
+        guard !vst2Paths.contains(path) else { return }
+        vst2Paths.append(path)
+        applyVst2Paths()
+    }
+
+    func removeVst2Plugin(_ path: String) {
+        let name = EngineController.vst2DisplayName(path)
+        for i in 0..<fx.count where fx[i].insert == name {
+            if io != nil { setInsert(i, "") } else { fx[i].insert = ""; fx[i].insertState = "" }
+        }
+        vst2Paths.removeAll { $0 == path }
+        applyVst2Paths()
+    }
+
+    private func applyVst2Paths() {
+        ah_io_vst2_set_paths(vst2Paths.joined(separator: "\n"))
+        loadEffectNames()
     }
 
     // MARK: - Tick meter
@@ -1208,12 +1334,17 @@ final class EngineController: ObservableObject {
     }
 
     func savePreset(named raw: String) {
+        guard Edition.allowsPresets else { status = L10n.t("Fitur ini tidak tersedia di edisi demo"); return }
         if let problem = presetNameProblem(raw) { status = problem; return }
         let name = sanitize(raw)
         let scene = SceneFile(
             name: name, deviceName: deviceName, useVirtual: useVirtual, useVirtual2: useVirtual2, useVirtual3: useVirtual3,
             bindings: currentBindings(),
-            inputs: (0..<inputs).map { SceneInput(id: "in:\($0)", gainDb: gains[$0], mute: mutes[$0], fx: fx[$0]) },
+            inputs: (0..<inputs).map { i in
+                var f = fx[i]
+                f.insertState = pluginStateBase64(i)
+                return SceneInput(id: "in:\(i)", gainDb: gains[i], mute: mutes[i], fx: f)
+            },
             outputs: (0..<outputs).map { SceneOutput(id: "out:\($0)", name: outNames[$0], gainDb: outputGains[$0],
                                                      mute: outputMutes[$0], limiter: outFx[$0]) },
             routes: (0..<inputs).flatMap { i in (0..<outputs).map { j in
@@ -1232,6 +1363,7 @@ final class EngineController: ObservableObject {
     }
 
     func loadPreset(_ name: String, quiet: Bool = false) {
+        guard Edition.allowsPresets else { if !quiet { status = L10n.t("Fitur ini tidak tersedia di edisi demo") }; return }
         let url = presetsDir.appendingPathComponent("\(name).json")
         guard let data = try? Data(contentsOf: url) else {
             if !quiet { status = L10n.f("Preset \"%@\" tidak ditemukan", name) }
@@ -1309,8 +1441,12 @@ final class EngineController: ObservableObject {
         UserDefaults.standard.set(name, forKey: "lastPreset")
         refreshLive()
         applyAll()
-        for i in 0..<inputs where !fx[i].insert.isEmpty && !isInsertLoaded(i, fx[i].insert) {
-            setInsert(i, fx[i].insert)
+        // Plugin dimuat ulang jika belum terpasang, atau jika preset membawa state (parameter) yang harus dipulihkan.
+        for i in 0..<inputs where !fx[i].insert.isEmpty {
+            let state = fx[i].insertState.isEmpty ? nil : Data(base64Encoded: fx[i].insertState)
+            if !isInsertLoaded(i, fx[i].insert) || state != nil {
+                setInsert(i, fx[i].insert, state: state)
+            }
         }
         if !quiet { status = L10n.f("Preset \"%@\" dimuat.", name) + missingNote }
     }
@@ -1334,6 +1470,7 @@ final class EngineController: ObservableObject {
     // Template dibuat dari peran: mic = input fisik 1, monitor = output fisik 1,
     // virtual = output virtual pertama (jika ada). Template juga mengatur DSP mic.
     func applyTemplate(_ name: String) {
+        guard Edition.allowsPresets else { status = L10n.t("Fitur ini tidak tersedia di edisi demo"); return }
         guard isOpen, physIn >= 1, physOut >= 1 else { status = L10n.t("Template butuh input dan output fisik"); return }
         let hasVirtualOut = outputs > physOut
         let virtualOut = physOut
@@ -1560,7 +1697,14 @@ enum L10n {
         "Audio Unit": "Audio Unit",
         "Buka Rantai FX…": "Open FX chain…",
         "Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter.": "The FX chain stores several Audio Units per track, with order, bypass, and parameters.",
-        "Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi.": "Installing a plugin briefly stops audio. Plugin parameters cannot be set from the app yet.",
+        "Pemasangan plugin menghentikan audio sebentar. Parameter dan pengaturan ikut tersimpan di preset.": "Installing a plugin briefly stops audio. Parameters and settings are saved with the preset.",
+        "Parameter plugin": "Plugin parameters",
+        "Tidak ada parameter yang bisa diatur.": "No adjustable parameters.",
+        "Plugin VST2": "VST2 plugins",
+        "Tambah plugin VST2…": "Add VST2 plugin…",
+        "Plugin VST2 dari file .vst atau .dylib. Plugin yang memakai SWELL dari REAPER (misalnya ReaFIR) tidak bisa dimuat di luar REAPER.": "VST2 plugins from .vst or .dylib files. Plugins that use REAPER's SWELL (for example ReaFIR) cannot load outside REAPER.",
+        "Plugin %@ dipasang di %@": "Plugin %@ installed on %@",
+        "Gagal memuat plugin %@": "Failed to load plugin %@",
         "Clip": "Clip",
         "Clip. Klik untuk menghapus": "Clip. Click to clear",
 
@@ -1609,5 +1753,16 @@ enum L10n {
         "Preset \"%@\" tidak cocok dengan perangkat yang terbuka": "Preset \"%@\" does not match the open device",
         "Preset \"%@\" tidak bisa dibaca": "Preset \"%@\" cannot be read",
         "Merekam %@ ke %@": "Recording %@ to %@",
+        "Edisi demo: maksimal %d route aktif": "Demo edition: up to %d active routes",
+        "Edisi demo: maksimal %d route aktif. Tangkap aplikasi, efek, rekaman, dan preset tidak tersedia.": "Demo edition: up to %d active routes. App capture, effects, recording, and presets are not available.",
+        "Fitur ini tidak tersedia di edisi demo": "This feature is not available in the demo edition",
+        "Terkunci di edisi demo": "Locked in the demo edition",
+        "Edisi Demo": "Demo Edition",
+        "Fitur yang terkunci: tangkap aplikasi, efek dan dinamika, rekaman, preset, dan template. Route aktif dibatasi %d.": "Locked features: app capture, effects and dynamics, recording, presets, and templates. Active routes are limited to %d.",
+        "Untuk berlangganan, beli lewat tautan ini:": "To subscribe, buy through this link:",
+        "Beli langganan": "Buy subscription",
+        "Info lebih lanjut, hubungi developer di:": "More information, contact the developer at:",
+        "Info edisi demo dan langganan": "Demo edition info and subscription",
+        "Lanjutkan demo": "Continue demo",
     ]
 }

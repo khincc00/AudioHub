@@ -154,7 +154,7 @@ struct AudioHubApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("AudioHub") {
+        WindowGroup(Edition.isDemo ? "AudioHub Demo" : "AudioHub") {
             ContentView()
                 .id(language)
                 .environmentObject(engine)
@@ -190,6 +190,62 @@ func writeSnapshot(engine: EngineController, path: String) {
     }
 }
 
+// Fitur yang tidak ada di edisi demo tetap tampil seperti biasa, tetapi terkunci dan tidak bisa diklik.
+struct DemoLock: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .disabled(Edition.isDemo)
+            .opacity(Edition.isDemo ? 0.45 : 1)
+            .overlay(alignment: .topTrailing) {
+                if Edition.isDemo {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(3)
+                        .help(L10n.t("Terkunci di edisi demo"))
+                }
+            }
+    }
+}
+
+extension View {
+    func demoLocked() -> some View { modifier(DemoLock()) }
+}
+
+// Isi popover lencana DEMO: fitur yang terkunci dan cara berlangganan.
+struct DemoInfoView: View {
+    var onContinue: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(L10n.t("Edisi Demo"), systemImage: "lock.fill")
+                .font(.headline)
+            Text(L10n.f("Fitur yang terkunci: tangkap aplikasi, efek dan dinamika, rekaman, preset, dan template. Route aktif dibatasi %d.", Edition.maxActiveRoutes))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Text(L10n.t("Untuk berlangganan, beli lewat tautan ini:"))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Link(L10n.t("Beli langganan"), destination: Edition.purchaseURL)
+                .font(.callout.weight(.semibold))
+            Text(L10n.t("Info lebih lanjut, hubungi developer di:"))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Link("khincreator.com", destination: Edition.contactURL)
+                .font(.callout.weight(.semibold))
+            if let onContinue {
+                Button(L10n.t("Lanjutkan demo"), action: onContinue)
+                    .keyboardShortcut(.defaultAction)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(14)
+        .frame(width: 300, alignment: .leading)
+    }
+}
+
 // MARK: - Jendela utama
 
 struct ContentView: View {
@@ -197,6 +253,8 @@ struct ContentView: View {
     @AppStorage(L10n.storageKey) private var language = AppLanguage.en.rawValue
     @EnvironmentObject var engine: EngineController
     @State private var showGraph = false
+    @State private var showDemoInfo = false
+    @State private var showDemoWelcome = false
 
     // Tinggi satu baris input dan satu baris matriks. Dibuat sama supaya label input sejajar dengan matriksnya.
     private let rowHeight: CGFloat = 84
@@ -217,6 +275,12 @@ struct ContentView: View {
             statusBar
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            if Edition.isDemo { showDemoWelcome = true }
+        }
+        .sheet(isPresented: $showDemoWelcome) {
+            DemoInfoView(onContinue: { showDemoWelcome = false })
+        }
     }
 
     // MARK: Toolbar
@@ -231,6 +295,24 @@ struct ContentView: View {
                 Text(L10n.t("Routing Center"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                if Edition.isDemo {
+                    Button {
+                        showDemoInfo.toggle()
+                    } label: {
+                        Text(L10n.t("DEMO"))
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.6)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Style.warning))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.t("Info edisi demo dan langganan"))
+                    .popover(isPresented: $showDemoInfo, arrowEdge: .bottom) {
+                        DemoInfoView()
+                    }
+                }
             }
 
             Spacer()
@@ -411,12 +493,14 @@ struct ContentView: View {
         AdaptiveScroll {
             VStack(alignment: .leading, spacing: 18) {
                 PresetPanel()
+                    .demoLocked()
                 Divider()
                 DeviceSettingsSection()
                 Divider()
                 DisclosureGroup(L10n.t("Lanjutan")) {
                     VStack(alignment: .leading, spacing: 16) {
                         TemplateSection()
+                            .demoLocked()
                         DevicePanel()
                         DiagnosticsPanel()
                     }
@@ -615,6 +699,7 @@ struct OutputPairStrip: View {
                     .padding(12)
                     .frame(width: 260, alignment: .leading)
                 }
+                .demoLocked()
             }
         }
         .padding(.horizontal, 8)
@@ -647,9 +732,11 @@ struct DeviceSettingsSection: View {
             pickerRow(L10n.t("VC 3/4")) {
                 virtualPicker(L10n.t("VC 3/4"), selection: $engine.virtualUID2, exclude: [engine.virtualUID1, engine.virtualUID3])
             }
+            .demoLocked()
             pickerRow(L10n.t("Loopback")) {
                 virtualPicker(L10n.t("Loopback 1/2"), selection: $engine.virtualUID3, exclude: [engine.virtualUID1, engine.virtualUID2])
             }
+            .demoLocked()
 
             Button {
                 engine.open()
@@ -706,6 +793,7 @@ struct DeviceSettingsSection: View {
                         .foregroundStyle(Style.danger)
                 }
             }
+            .demoLocked()
 
             Divider()
 
@@ -832,6 +920,7 @@ struct InputRow: View {
                 ToggleChip(label: "M", on: engine.mutes[index], tint: Style.danger,
                            help: L10n.t("Bisukan kanal")) { engine.setMute(index, !engine.mutes[index]) }
                 DynamicsButton(index: index)
+                    .demoLocked()
                 if let host = fxChainHost {
                     let count = host.count(index)
                     Button { host.open(index) } label: {
@@ -840,6 +929,7 @@ struct InputRow: View {
                     }
                     .buttonStyle(.plain)
                     .help("Rantai FX (Audio Unit) per track")
+                    .demoLocked()
                 }
             }
 
@@ -1172,16 +1262,43 @@ struct InputDynamicsView: View {
                 Text(L10n.t("Rantai FX menyimpan beberapa Audio Unit per track dengan urutan, bypass, dan parameter."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Picker(L10n.t("Audio Unit"), selection: Binding(get: { f.insert },
+                Picker(L10n.t("Plugin"), selection: Binding(get: { f.insert },
                     set: { engine.setInsert(index, $0) })) {
                     Text(L10n.t("Tanpa plugin")).tag("")
                     ForEach(engine.effectNames, id: \.self) { Text($0).tag($0) }
                 }
-                Text(L10n.t("Pemasangan plugin menghentikan audio sebentar. Parameter plugin belum bisa diatur dari aplikasi."))
+                Text(L10n.t("Pemasangan plugin menghentikan audio sebentar. Parameter dan pengaturan ikut tersimpan di preset."))
                     .font(.caption).foregroundStyle(.secondary)
+                if !f.insert.isEmpty {
+                    FxParamsSection(index: index, insertName: f.insert)
+                }
+                Section(L10n.t("Plugin VST2")) {
+                    ForEach(engine.vst2Paths, id: \.self) { path in
+                        LabeledContent {
+                            Button(L10n.t("Hapus")) { engine.removeVst2Plugin(path) }
+                        } label: {
+                            Text((path as NSString).lastPathComponent)
+                        }
+                    }
+                    Button(L10n.t("Tambah plugin VST2…")) { chooseVst2Plugin() }
+                    Text(L10n.t("Plugin VST2 dari file .vst atau .dylib. Plugin yang memakai SWELL dari REAPER (misalnya ReaFIR) tidak bisa dimuat di luar REAPER."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
+    }
+
+    // Memilih file VST2, mendaftarkannya, lalu langsung memasangnya pada input ini.
+    private func chooseVst2Plugin() {
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("Tambah plugin VST2…")
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        engine.addVst2Plugin(url.path)
+        engine.setInsert(index, EngineController.vst2DisplayName(url.path))
     }
 
     private func param(_ label: String, _ value: Float, _ range: ClosedRange<Float>, _ unit: String,
@@ -1198,6 +1315,45 @@ struct InputDynamicsView: View {
         } label: {
             Text(label)
         }
+    }
+}
+
+// Parameter plugin pada satu input. Dibaca ulang saat plugin berganti.
+struct FxParamsSection: View {
+    let index: Int
+    let insertName: String
+    @EnvironmentObject var engine: EngineController
+    @State private var params: [EngineController.PluginParam] = []
+
+    var body: some View {
+        Section(L10n.t("Parameter plugin")) {
+            if params.isEmpty {
+                Text(L10n.t("Tidak ada parameter yang bisa diatur."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(params.indices, id: \.self) { k in
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Slider(value: Binding(
+                            get: { params[k].value },
+                            set: { v in
+                                params[k].value = v
+                                engine.setPluginParam(index, id: params[k].id, value: v)
+                                params[k].text = engine.pluginParamText(index, params[k].index)
+                            }), in: params[k].minValue...params[k].maxValue)
+                            .frame(width: 160)
+                        Text(params[k].text.isEmpty ? String(format: "%.2f", params[k].value) : params[k].text)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 96, alignment: .trailing)
+                    }
+                } label: {
+                    Text(params[k].name)
+                }
+            }
+        }
+        .onAppear { params = engine.pluginParams(index) }
+        .onChange(of: insertName) { _, _ in params = engine.pluginParams(index) }
     }
 }
 

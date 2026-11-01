@@ -15,7 +15,9 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.4</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>AudioHub Studio menangkap audio dari aplikasi yang Anda pilih untuk routing dan FX.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>AudioHub Studio membaca input audio dari perangkat yang Anda pilih untuk routing, FX, dan monitoring.</string>
     <key>NSHighResolutionCapable</key>

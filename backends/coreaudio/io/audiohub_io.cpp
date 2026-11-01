@@ -238,7 +238,7 @@ static OSStatus ioProc(AudioObjectID, const AudioTimeStamp*,
     for (int i = 0; i < io->nIn; i++) {
         for (int k = 0; k < kMaxFx; k++) {
             int s = io->fxOrder[i][k].load(std::memory_order_relaxed);
-            if (io->fxOn[i][s].load(std::memory_order_relaxed) && io->insert[i][s].au)
+            if (io->fxOn[i][s].load(std::memory_order_relaxed) && audiohub::isLoaded(io->insert[i][s]))
                 audiohub::processInsert(io->insert[i][s], io->inDeint[i], (int)frames);
         }
     }
@@ -590,7 +590,7 @@ int ah_io_fx_info(AHIO* io, int input, int slot, char* name, int nameLen, int* e
     const audiohub::AUInsert& s = io->insert[input][slot];
     if (name && nameLen > 0) std::snprintf(name, nameLen, "%s", s.name);
     if (enabled) *enabled = io->fxOn[input][slot].load() ? 1 : 0;
-    return s.au ? 1 : 0;
+    return audiohub::isLoaded(s) ? 1 : 0;
 }
 
 int ah_io_fx_set_enabled(AHIO* io, int input, int slot, int enabled) {
@@ -632,6 +632,16 @@ int ah_io_fx_param_get(AHIO* io, int input, int slot, int index, AHFxParam* out)
 int ah_io_fx_param_set(AHIO* io, int input, int slot, unsigned int paramId, float value) {
     if (!validSlot(io, input, slot)) return -1;
     return audiohub::setParamValue(io->insert[input][slot], paramId, value) ? 0 : -1;
+}
+
+int ah_io_fx_param_text(AHIO* io, int input, int slot, int index, char* buf, int len) {
+    if (buf && len > 0) buf[0] = 0;
+    if (!validSlot(io, input, slot)) return -1;
+    return audiohub::paramText(io->insert[input][slot], index, buf, len) ? 0 : -1;
+}
+
+void ah_io_vst2_set_paths(const char* paths) {
+    audiohub::setVst2Paths(paths);
 }
 
 int ah_io_fx_state_get(AHIO* io, int input, int slot, unsigned char* buf, int len) {

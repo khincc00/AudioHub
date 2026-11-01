@@ -15,7 +15,9 @@
     <key>CFBundleVersion</key>
     <string>3</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.4</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>AudioHub menangkap audio dari aplikasi yang Anda pilih, misalnya Spotify, untuk routing dan isolasi.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>AudioHub membaca input audio dari perangkat yang Anda pilih untuk routing dan monitoring.</string>
     <key>NSHighResolutionCapable</key>

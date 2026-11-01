@@ -1,6 +1,6 @@
 # AudioHub
 
-Routing audio untuk macOS: matriks routing per pasangan stereo, gain dan mute, pan, solo, meter, scene, efek per input (gate, EQ, kompresor, delay, Audio Unit), penangkapan audio per aplikasi dengan opsi isolasi (macOS 14.4 ke atas), dan driver perangkat virtual AVHub v2 yang ikut dipasang. Tiga pasangan virtual: VC 1/2, VC 3/4, dan Loopback 1/2. Antarmuka tersedia dalam Bahasa Inggris (default) dan Bahasa Indonesia. Tidak terkunci ke merek hardware tertentu.
+Routing audio untuk macOS: matriks routing per pasangan stereo, gain dan mute, pan, solo, meter, scene, efek per input (gate, EQ, kompresor, delay, plugin Audio Unit, dan plugin VST2 dengan parameter yang bisa diatur), penangkapan audio per aplikasi dengan opsi isolasi (macOS 14.4 ke atas), dan driver perangkat virtual AVHub v2 yang ikut dipasang. Tiga pasangan virtual: VC 1/2, VC 3/4, dan Loopback 1/2. Antarmuka tersedia dalam Bahasa Inggris (default) dan Bahasa Indonesia. Tidak terkunci ke merek hardware tertentu.
 
 - Versi aplikasi: **0.3.0** (build 3)
 - Driver perangkat virtual: **AVHub v2** (versi 2.0.0)
@@ -57,6 +57,7 @@ Hapus `/Applications/AudioHub.app` dan `/Library/Audio/Plug-Ins/HAL/AVHubDriver.
 | Uji unit engine | `sh tests/unit/run.sh` | Tanpa perangkat keras |
 | Tes driver | `sh virtual-device/AVHubDriver/tests/run_tests.sh` | Tidak memasang apa pun ke sistem |
 | Aplikasi | `xcodebuild -project AudioHub.xcodeproj -target AudioHub -configuration Release` | Hasil build di folder `build/` |
+| Edisi demo | `DEMO=1 sh apps/macos/AudioHub/build.sh` | Menghasilkan `build/AudioHub Demo.app`. Dibatasi: maks. 8 route aktif. VC 3/4, Loopback, tangkap aplikasi, efek/dinamika, rekaman, preset, dan template tampil tetapi terkunci |
 | AudioHub Studio | `xcodegen generate --spec AudioHubStudio.yml`, lalu build target `AudioHubStudio` | Routing AudioHub ditambah rantai FX (Audio Unit) per track |
 | Probe AU | `sh tests/integration/run_au_probe.sh` | Memuat AU bawaan Apple, tanpa perangkat audio |
 | Installer DMG | `sh scripts/build_dmg.sh` | Menjalankan tes driver, membangun aplikasi dan driver, lalu menghasilkan `build/AudioHub-0.3.0.dmg`. Perlu sertifikat Developer ID |
@@ -94,3 +95,4 @@ Status AudioHub Studio terhadap spesifikasi REAPER: [docs/studio/status-spesifik
 - Isolasi aplikasi (Muted When Tapped) belum diuji secara audio. Pastikan audionya terdengar lewat AudioHub setelah diteruskan dari matriks.
 - Aplikasi musik, panggilan, dan OBS belum diuji langsung. Tangkap audio Spotify sudah diuji: meter kanalnya bergerak saat diputar.
 - Level route dalam perangkat virtual yang sama (VC In → VC Out) di 0 dB dapat berdengung. Atur level sendiri atau hindari route itu.
+- Plugin VST2 dimuat dari file `.vst` atau `.dylib` yang dipilih lewat **Tambah plugin VST2…** di tab Plugin. Plugin diproses sebagai mono (kiri dan kanan sama, keluaran kiri dipakai). Plugin yang memakai SWELL dari REAPER, misalnya ReaFIR, tidak bisa dimuat di luar REAPER. Uji dilakukan dengan plugin uji buatan sendiri. Plugin VST2 pihak ketiga belum diuji.

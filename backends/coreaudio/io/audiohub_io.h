@@ -88,6 +88,9 @@ int ah_io_insert_unload(AHIO* io, int input);
 void ah_io_insert_name(AHIO* io, int input, char* buf, int len);
 // Daftar effect AU yang tersedia, dipisahkan '\n'. Mengembalikan jumlah byte yang ditulis.
 int ah_io_list_effects(char* buf, int len);
+// Mendaftarkan file VST2 (.vst / .dylib) yang boleh dimuat, dipisahkan '\n'. Muncul di daftar sebagai "VST2: <nama file>".
+// Dipanggil sebelum ah_io_list_effects agar daftar ikut berubah.
+void ah_io_vst2_set_paths(const char* paths);
 
 // Rantai FX per input: hingga AH_FX_SLOTS slot AU, diproses berurutan sebelum engine.
 // Slot dimuat dan dilepas hanya saat IO berhenti (-2 jika berjalan).
@@ -117,6 +120,8 @@ int ah_io_fx_param_count(AHIO* io, int input, int slot);
 int ah_io_fx_param_get(AHIO* io, int input, int slot, int index, AHFxParam* out);
 // Mengubah nilai parameter (id dari AHFxParam). 0 jika berhasil, -1 jika tidak.
 int ah_io_fx_param_set(AHIO* io, int input, int slot, unsigned int paramId, float value);
+// Teks tampilan parameter, mis. "-6.0 dB" (hanya VST2). 0 jika ada, -1 jika tidak.
+int ah_io_fx_param_text(AHIO* io, int input, int slot, int index, char* buf, int len);
 
 // State AU slot (preset penuh). get: mengembalikan ukuran data, -1 jika gagal; buf NULL untuk mengukur.
 // set: 0 jika berhasil, -1 jika gagal, -2 jika IO masih berjalan.
