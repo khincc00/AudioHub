@@ -1,0 +1,74 @@
+name: Windows
+
+# Membangun backend WASAPI, aplikasi WinUI, dan installer di Windows.
+# Berjalan saat ada perubahan di windows/, engine/, atau backends/coreaudio/io/route_policy.h.
+on:
+  push:
+    paths:
+      - "windows/**"
+      - "engine/**"
+      - "backends/coreaudio/io/route_policy.h"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - "engine/**"
+      - "backends/coreaudio/io/route_policy.h"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      APP_VERSION: "0.3.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Uji ring buffer (MSVC)
+        shell: pwsh
+        run: |
+          cl /nologo /EHsc /std:c++17 /W4 /WX windows\io\tests\test_ring.cpp /Fe:test_ring.exe
+          .\test_ring.exe
+
+      - name: Bangun backend WASAPI (CMake)
+        shell: pwsh
+        run: |
+          cmake -S windows -B windows\build -A x64
+          cmake --build windows\build --config Release
+
+      - name: Uji library Core (.NET)
+        shell: pwsh
+        run: dotnet test windows\app\AudioHub.Core.Tests\AudioHub.Core.Tests.csproj -c Release
+
+      - name: Publish aplikasi WinUI
+        shell: pwsh
+        run: |
+          dotnet publish windows\app\AudioHub.Windows\AudioHub.Windows.csproj `
+            -c Release -r win-x64 -p:Platform=x64 `
+            -p:AudioHubIoDir="$PWD\windows\build\io\Release\" `
+            -o windows\build\publish
+
+      - name: Salin driver (jika sudah ada)
+        shell: pwsh
+        run: |
+          if (Test-Path windows\driver\build) { Write-Host "Driver ditemukan." } else { New-Item -ItemType Directory windows\driver\build | Out-Null; Write-Host "Driver belum dibuat, installer tanpa driver." }
+
+      - name: Pasang Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Buat installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:APP_VERSION" "/DPublishDir=..\build\publish" "/DDriverDir=..\driver\build" windows\installer\AudioHub.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioHub-Setup-${{ env.APP_VERSION }}-win64
+          path: windows/build/installer/*.exe
+          if-no-files-found: error

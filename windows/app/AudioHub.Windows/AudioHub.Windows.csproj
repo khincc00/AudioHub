@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Aplikasi WinUI 3 (tanpa paket MSIX, dipasang lewat installer/AudioHub.iss).
+       Hanya bisa dibangun di Windows. Lihat windows/README.md untuk perintah build. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>AudioHub.Windows</RootNamespace>
+    <AssemblyName>AudioHub</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishTrimmed>false</PublishTrimmed>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <!-- Lokasi audiohub_io.dll hasil build CMake (windows/build). Diubah bila folder build berbeda. -->
+    <AudioHubIoDir Condition="'$(AudioHubIoDir)' == ''">$(MSBuildThisFileDirectory)..\..\build\io\Release\</AudioHubIoDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AudioHub.Core\AudioHub.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250916003" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(AudioHubIoDir)audiohub_io.dll')">
+    <None Include="$(AudioHubIoDir)audiohub_io.dll" Link="audiohub_io.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="WarnMissingIoDll" BeforeTargets="Build" Condition="!Exists('$(AudioHubIoDir)audiohub_io.dll')">
+    <Warning Text="audiohub_io.dll tidak ditemukan di $(AudioHubIoDir). Bangun backend dulu: cmake --build windows/build --config Release" />
+  </Target>
+
+</Project>

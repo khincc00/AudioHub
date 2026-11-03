@@ -22,6 +22,8 @@ Status: **prototipe yang berfungsi di mesin uji.** Belum siap rilis publik. Liha
 | Izin sistem | Akses mikrofon, jika macOS memintanya saat input dipakai | Sama |
 | Membangun dari sumber | Xcode dengan Command Line Tools. Sertifikat Developer ID di keychain untuk membuat DMG | Xcode 27, versi yang dipakai saat pengujian |
 
+Versi Windows sedang dikembangkan di folder [windows/](windows/). Status dan langkah build ada di [windows/README.md](windows/README.md).
+
 ## Pemasangan
 
 1. Buka `AudioHub-0.3.0.dmg`.

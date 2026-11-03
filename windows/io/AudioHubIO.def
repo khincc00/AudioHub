@@ -1,0 +1,27 @@
+LIBRARY audiohub_io
+EXPORTS
+    ah_io_open
+    ah_io_close
+    ah_io_start
+    ah_io_stop
+    ah_io_is_alive
+    ah_io_inputs
+    ah_io_outputs
+    ah_io_physical_inputs
+    ah_io_physical_outputs
+    ah_io_route_allowed
+    ah_io_channel_owner
+    ah_io_set_route
+    ah_io_set_channel
+    ah_io_set_channel_pan
+    ah_io_set_output
+    ah_io_set_input_fx
+    ah_io_set_input_delay
+    ah_io_set_output_limiter
+    ah_io_peaks
+    ah_io_stats
+    ah_io_record_start
+    ah_io_record_stop
+    ah_io_record_stats
+    ah_io_list_devices
+    ah_io_list_processes

@@ -61,7 +61,7 @@ Acuan: daftar fitur yang diberikan pengguna dari panduan PS22. Status per butir:
 | Aspek | Status |
 |---|---|
 | macOS | Didukung (target AudioHub). |
-| Windows | Di luar cakupan. |
+| Windows | Dalam pengembangan (folder `windows/`). Engine sama dengan macOS. Backend WASAPI dan UI WinUI 3 belum diuji di perangkat, dan driver virtual belum dibuat. Lihat [windows/README.md](../../windows/README.md). |
 | Pemilihan output per aplikasi | Dilakukan di macOS atau aplikasi terkait. AudioHub menyediakan endpoint virtual. |
 
 ## 6. Fitur yang belum terkonfirmasi di PS22 dan tidak diklaim di AudioHub
