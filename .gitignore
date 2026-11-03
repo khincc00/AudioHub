@@ -11,4 +11,14 @@ xcuserdata/
 *.xcuserstate
 
 # Folder driver pihak ketiga: lisensi distribusi belum diperiksa, jangan di-commit
-Driver/
+/Driver/
+
+# Build Windows (dotnet dan CMake)
+windows/app/**/bin/
+windows/app/**/obj/
+windows/app/**/TestResults/
+windows/driver/build/
+windows/driver/src/**/x64/
+windows/driver/src/**/Debug/
+windows/driver/src/**/Release/
+windows/driver/src/**/*.user
