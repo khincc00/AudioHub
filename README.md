@@ -2,7 +2,7 @@
 
 Routing audio untuk macOS: matriks routing per pasangan stereo, gain dan mute, pan, solo, meter, scene, efek per input (gate, EQ, kompresor, delay, plugin Audio Unit, dan plugin VST2 dengan parameter yang bisa diatur), penangkapan audio per aplikasi dengan opsi isolasi (macOS 14.4 ke atas), dan driver perangkat virtual AVHub v2 yang ikut dipasang. Tiga pasangan virtual: VC 1/2, VC 3/4, dan Loopback 1/2. Antarmuka tersedia dalam Bahasa Inggris (default) dan Bahasa Indonesia. Tidak terkunci ke merek hardware tertentu.
 
-- Versi aplikasi: **0.3.0** (build 3)
+- Versi aplikasi: **0.3.1** (build 4)
 - Driver perangkat virtual: **AVHub v2** (versi 2.0.0)
 - Lisensi: [LICENSE](LICENSE), berlaku untuk aplikasi dan driver
 
@@ -26,7 +26,7 @@ Versi Windows sedang dikembangkan di folder [windows/](windows/). Status dan lan
 
 ## Pemasangan
 
-1. Buka `AudioHub-0.3.0.dmg`.
+1. Buka `AudioHub-0.3.1.dmg`.
 2. Jalankan `Install AudioHub.pkg`, lalu masukkan kata sandi administrator saat diminta.
 3. Installer memasang:
    - `AudioHub.app` ke `/Applications`;
@@ -62,7 +62,7 @@ Hapus `/Applications/AudioHub.app` dan `/Library/Audio/Plug-Ins/HAL/AVHubDriver.
 | Edisi demo | `DEMO=1 sh apps/macos/AudioHub/build.sh` | Menghasilkan `build/AudioHub Demo.app`. Dibatasi: maks. 8 route aktif. VC 3/4, Loopback, tangkap aplikasi, efek/dinamika, rekaman, preset, dan template tampil tetapi terkunci |
 | AudioHub Studio | `xcodegen generate --spec AudioHubStudio.yml`, lalu build target `AudioHubStudio` | Routing AudioHub ditambah rantai FX (Audio Unit) per track |
 | Probe AU | `sh tests/integration/run_au_probe.sh` | Memuat AU bawaan Apple, tanpa perangkat audio |
-| Installer DMG | `sh scripts/build_dmg.sh` | Menjalankan tes driver, membangun aplikasi dan driver, lalu menghasilkan `build/AudioHub-0.3.0.dmg`. Perlu sertifikat Developer ID |
+| Installer DMG | `sh scripts/build_dmg.sh` | Menjalankan tes driver, membangun aplikasi dan driver, lalu menghasilkan `build/AudioHub-0.3.1.dmg`. Perlu sertifikat Developer ID |
 
 Aplikasi memakai driver AVHub v2 dari `virtual-device/AVHubDriver/`. Driver ini ikut dalam DMG dan dipasang otomatis bersama aplikasi.
 
