@@ -57,6 +57,12 @@ jobs:
             -p:AudioHubIoDir="$PWD\windows\build\io\Release\" `
             -o windows\build\publish
 
+      - name: Periksa isi hasil publish
+        shell: pwsh
+        run: |
+          Get-ChildItem windows\build\publish -Include AudioHub.exe,audiohub_io.dll -Recurse | Select-Object FullName, Length
+          if (-not (Test-Path windows\build\publish\audiohub_io.dll)) { throw 'audiohub_io.dll tidak ikut terpaket' }
+
       - name: Salin driver (jika sudah ada)
         shell: pwsh
         run: |
@@ -76,4 +82,35 @@ jobs:
         with:
           name: AudioHub-Setup-${{ env.APP_VERSION }}-win64
           path: windows/build/installer/*.exe
+          if-no-files-found: error
+
+  # Driver AVHub: dibangun di job terpisah supaya kegagalan WDK tidak menghentikan job build.
+  driver:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Pasang Windows Driver Kit
+        shell: pwsh
+        run: choco install windowsdriverkit11 --no-progress -y
+
+      - name: Bangun driver SimpleAudioSample (AVHub)
+        shell: pwsh
+        run: msbuild windows\driver\src\SimpleAudioSample.sln /p:Configuration=Debug /p:Platform=x64 /m /v:minimal
+
+      - name: Kumpulkan paket driver
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem windows\driver\src -Recurse -Directory -Filter package | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if (-not $pkg) { throw 'Folder package tidak ditemukan' }
+          Get-ChildItem $pkg.FullName -Recurse | Select-Object FullName, Length
+          New-Item -ItemType Directory windows\driver\out -Force | Out-Null
+          Copy-Item "$($pkg.FullName)\*" windows\driver\out -Recurse -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AVHubDriver-package-x64-Debug
+          path: windows/driver/out/**
           if-no-files-found: error

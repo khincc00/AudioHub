@@ -668,7 +668,7 @@ void ah_io_stats(AHIO* io, AHIOStats* out) {
 int ah_io_record_start(AHIO* io, int output, const char* utf8Path) {
     if (!io || !utf8Path || output < 0 || output >= io->nOut) return -1;
     if (io->recActive.load()) return -1;
-    io->recFile = _wfopen(ahwin::toWide(utf8Path).c_str(), L"wb");
+    if (_wfopen_s(&io->recFile, ahwin::toWide(utf8Path).c_str(), L"wb") != 0) io->recFile = nullptr;
     if (!io->recFile) return -1;
     writeWavHeader(io->recFile, io->sampleRate, 0);
     io->recDataBytes = 0;
