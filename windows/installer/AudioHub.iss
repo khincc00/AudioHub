@@ -35,7 +35,6 @@ UninstallDisplayIcon={app}\AudioHub.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "indonesian"; MessagesFile: "compiler:Languages\Indonesian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
