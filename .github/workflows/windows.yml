@@ -96,6 +96,16 @@ jobs:
         shell: pwsh
         run: choco install windowsdriverkit11 --no-progress -y
 
+      - name: Diagnostik WDK
+        shell: pwsh
+        run: |
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          Get-ChildItem "$kits\Include" -Directory | Select-Object -ExpandProperty Name
+          Get-ChildItem "$kits" -Recurse -Filter portcls.h -ErrorAction SilentlyContinue | Select-Object -First 3 FullName
+          Get-ChildItem "$kits\Vsix" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 15 FullName
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter WindowsDriver.props -ErrorAction SilentlyContinue | Select-Object -First 3 FullName
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "*.vsix" -ErrorAction SilentlyContinue | Select-Object -First 3 FullName
+
       - name: Bangun driver SimpleAudioSample (AVHub)
         shell: pwsh
         run: msbuild windows\driver\src\SimpleAudioSample.sln /p:Configuration=Debug /p:Platform=x64 /m /v:minimal
