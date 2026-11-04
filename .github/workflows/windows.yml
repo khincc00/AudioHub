@@ -96,6 +96,16 @@ jobs:
         shell: pwsh
         run: choco install windowsdriverkit11 --no-progress -y
 
+      - name: Pasang ekstensi WDK untuk Visual Studio
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter VSIXInstaller.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          $wdk = "${env:ProgramFiles(x86)}\Windows Kits\10\Vsix\VS2019\WDK.vsix"
+          if (-not $vsix) { throw 'VSIXInstaller tidak ditemukan' }
+          & $vsix.FullName /quiet /admin $wdk
+          Write-Host "VSIXInstaller exit: $LASTEXITCODE"
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Directory -Filter PlatformToolsets -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.FullName -Directory | Select-Object -ExpandProperty FullName } | Where-Object { $_ -match 'Kernel' }
+
       - name: Diagnostik WDK
         shell: pwsh
         run: |
