@@ -118,7 +118,7 @@ jobs:
 
       - name: Bangun driver SimpleAudioSample (AVHub)
         shell: pwsh
-        run: msbuild windows\driver\src\SimpleAudioSample.sln /p:Configuration=Debug /p:Platform=x64 /m /v:minimal
+        run: msbuild windows\driver\src\SimpleAudioSample.sln /p:Configuration=Debug /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22000.0 /m /v:minimal
 
       - name: Kumpulkan paket driver
         shell: pwsh
