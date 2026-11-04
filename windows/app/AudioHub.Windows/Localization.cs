@@ -7,7 +7,7 @@ public static class Localization
     public const string English = "en";
     public const string Indonesian = "id";
 
-    public static string Current { get; set; } = English;
+    public static string ActiveLanguage { get; set; } = English;
 
     private static readonly Dictionary<string, (string En, string Id)> Table = new()
     {
@@ -83,7 +83,7 @@ public static class Localization
     public static string T(string key)
     {
         if (!Table.TryGetValue(key, out var entry)) return key;
-        return Current == Indonesian ? entry.Id : entry.En;
+        return ActiveLanguage == Indonesian ? entry.Id : entry.En;
     }
 
     public static string Format(string key, params object[] args) => string.Format(T(key), args);

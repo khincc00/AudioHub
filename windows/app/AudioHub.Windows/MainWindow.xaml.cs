@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = AppSettings.Load();
-        Current = _settings.Language;
+        ActiveLanguage = _settings.Language;
 
         _meterTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _meterTimer.Interval = TimeSpan.FromMilliseconds(33);
@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
 
         LanguageBox.Items.Add(new ComboBoxItem { Content = "English", Tag = English });
         LanguageBox.Items.Add(new ComboBoxItem { Content = "Bahasa Indonesia", Tag = Indonesian });
-        LanguageBox.SelectedIndex = Current == Indonesian ? 1 : 0;
+        LanguageBox.SelectedIndex = ActiveLanguage == Indonesian ? 1 : 0;
 
         ApplyText();
         RefreshDevices();
@@ -116,7 +116,7 @@ public sealed partial class MainWindow : Window
     private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready || LanguageBox.SelectedItem is not ComboBoxItem { Tag: string lang }) return;
-        Current = lang;
+        ActiveLanguage = lang;
         _settings.Language = lang;
         _settings.Save();
         ApplyText();
