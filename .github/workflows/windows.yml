@@ -28,6 +28,11 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Siapkan lingkungan MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Uji ring buffer (MSVC)
         shell: pwsh
         run: |
