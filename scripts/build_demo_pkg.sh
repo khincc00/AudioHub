@@ -1,5 +1,5 @@
 #!/bin/sh
-# Membangun AudioHub-Demo-0.3.1.pkg: installer edisi demo berisi AudioHub Demo.app dan driver AVHub v2 (VC 1/2).
+# Membangun AudioHub-Demo-1.0.0.pkg: installer edisi demo berisi AudioHub Demo.app dan driver AVHub v2 (VC 1/2).
 # Ditandatangani Developer ID. Notarisasi dijalankan hanya jika NOTARY_PROFILE diisi, yaitu nama profil notarytool di Keychain.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,7 +7,7 @@ APP_SRC="$ROOT/apps/macos/AudioHub"
 DRIVER_SRC="$ROOT/virtual-device/AVHubDriver"
 OUT_DIR="${OUT_DIR:-$ROOT/build}"
 BUILD="$OUT_DIR/demo-pkg"
-PKG="$OUT_DIR/AudioHub-Demo-0.3.1.pkg"
+PKG="$OUT_DIR/AudioHub-Demo-1.0.0.pkg"
 APP_ID="${APP_ID:-Developer ID Application: taufiq sholikhin (MYQ2H766UX)}"
 INSTALLER_ID="${INSTALLER_ID:-Developer ID Installer: taufiq sholikhin (MYQ2H766UX)}"
 APP="$BUILD/products/AudioHub Demo.app"
@@ -50,7 +50,7 @@ lock_location "$APP_STAGE" "$BUILD/app-components.plist"
 pkgbuild --root "$APP_STAGE" \
     --component-plist "$BUILD/app-components.plist" \
     --identifier com.audiohub.demo.installer \
-    --version 0.3.1 \
+    --version 1.0.0 \
     --install-location / \
     --ownership recommended \
     --sign "$INSTALLER_ID" \
@@ -69,15 +69,15 @@ lock_location "$DRIVER_STAGE" "$BUILD/driver-components.plist"
 pkgbuild --root "$DRIVER_STAGE" \
     --component-plist "$BUILD/driver-components.plist" \
     --identifier com.avhub.driver.installer \
-    --version 2.0.0 \
+    --version 1.0.0 \
     --install-location / \
     --ownership recommended \
     --scripts "$DRIVER_SCRIPTS" \
     --sign "$INSTALLER_ID" \
-    "$BUILD/AVHubDriver-2.0.0.pkg"
+    "$BUILD/AVHubDriver-1.0.0.pkg"
 
 # Gabungkan keduanya menjadi satu installer
-productbuild --package "$BUILD/AudioHub-Demo-app.pkg" --package "$BUILD/AVHubDriver-2.0.0.pkg" \
+productbuild --package "$BUILD/AudioHub-Demo-app.pkg" --package "$BUILD/AVHubDriver-1.0.0.pkg" \
     --sign "$INSTALLER_ID" \
     "$PKG"
 

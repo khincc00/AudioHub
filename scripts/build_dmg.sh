@@ -1,5 +1,5 @@
 #!/bin/sh
-# Membangun AudioHub-0.3.1.dmg: satu paket instalasi untuk aplikasi dan driver virtual AVHub v2, dibungkus DMG.
+# Membangun AudioHub-1.0.0.dmg: satu paket instalasi untuk aplikasi dan driver virtual AVHub v2, dibungkus DMG.
 # Aplikasi masuk ke /Applications, driver masuk ke /Library/Audio/Plug-Ins/HAL. Keduanya dipasang sekaligus.
 # Ditandatangani Developer ID. Notarisasi dilakukan terpisah (lihat docs/release/checklist.md).
 set -e
@@ -16,7 +16,7 @@ PKG_NAME="Install AudioHub.pkg"
 # Folder hasil. Bisa diganti lewat OUT_DIR, misalnya folder installer terpisah di luar repo.
 OUT_DIR="${OUT_DIR:-$ROOT/build}"
 mkdir -p "$OUT_DIR"
-DMG="$OUT_DIR/AudioHub-0.3.1.dmg"
+DMG="$OUT_DIR/AudioHub-1.0.0.dmg"
 APP_ID="${APP_ID:-Developer ID Application: taufiq sholikhin (MYQ2H766UX)}"
 INSTALLER_ID="${INSTALLER_ID:-Developer ID Installer: taufiq sholikhin (MYQ2H766UX)}"
 
@@ -59,7 +59,7 @@ APP_PKG="$BUILD/AudioHub-app.pkg"
 pkgbuild --root "$STAGE" \
     --component-plist "$BUILD/app-components.plist" \
     --identifier com.audiohub.installer \
-    --version 0.3.1 \
+    --version 1.0.0 \
     --install-location / \
     --ownership recommended \
     --sign "$INSTALLER_ID" \
@@ -78,11 +78,11 @@ SCRIPT
 chmod +x "$DRIVER_SCRIPTS/postinstall"
 lock_location "$DRIVER_STAGE" "$BUILD/driver-components.plist"
 
-DRIVER_PKG="$BUILD/AVHubDriver-2.0.0.pkg"
+DRIVER_PKG="$BUILD/AVHubDriver-1.0.0.pkg"
 pkgbuild --root "$DRIVER_STAGE" \
     --component-plist "$BUILD/driver-components.plist" \
     --identifier com.avhub.driver.installer \
-    --version 2.0.0 \
+    --version 1.0.0 \
     --install-location / \
     --ownership recommended \
     --scripts "$DRIVER_SCRIPTS" \
@@ -90,7 +90,7 @@ pkgbuild --root "$DRIVER_STAGE" \
     "$DRIVER_PKG"
 
 # Gabungkan aplikasi dan driver menjadi satu installer
-PKG="$BUILD/AudioHub-0.3.1.pkg"
+PKG="$BUILD/AudioHub-1.0.0.pkg"
 productbuild --package "$APP_PKG" --package "$DRIVER_PKG" \
     --sign "$INSTALLER_ID" \
     "$PKG"
@@ -98,7 +98,7 @@ productbuild --package "$APP_PKG" --package "$DRIVER_PKG" \
 # DMG hanya berisi installer
 mkdir -p "$DMG_SRC"
 cp "$PKG" "$DMG_SRC/$PKG_NAME"
-hdiutil create -volname "AudioHub 0.3.1" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "AudioHub 1.0.0" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$APP_ID" --timestamp "$DMG"
 
 echo "DMG: $DMG"
